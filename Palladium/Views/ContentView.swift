@@ -410,6 +410,9 @@ struct ContentView: View {
         .onAppear {
             installKeyboardDismissTapIfNeeded()
             syncIdleTimerDisabled()
+            if notificationsEnabled {
+                requestNotificationAuthorizationIfNeeded()
+            }
             refreshImportedCookieFiles()
             consumePendingShortcutDownloadRequestIfNeeded()
             if checkPackageUpdatesOnLaunch {
