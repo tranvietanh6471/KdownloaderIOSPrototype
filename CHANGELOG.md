@@ -1,6 +1,6 @@
 # Palladium Changelog
 
-## v1.0.1-b5
+## v1.0.2
 
 - Fixed background downloads
 - Added notification permission check on app start
