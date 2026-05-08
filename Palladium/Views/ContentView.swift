@@ -68,6 +68,7 @@ struct ContentView: View {
     static let linkHistoryEntriesDefaultsKey = "palladium.linkHistoryEntries"
     static let appAppearanceModeDefaultsKey = "palladium.appAppearanceMode"
     static let packageVersionsTextDefaultsKey = "palladium.packageVersionsText"
+    static let checkPackageUpdatesOnLaunchDefaultsKey = "palladium.checkPackageUpdatesOnLaunch"
     static let defaultLinkHistoryLimit = 10
     static let maxLinkHistoryLimit = 50
 
@@ -114,6 +115,7 @@ struct ContentView: View {
     @State var isLoadingPackageVersions = false
     @State var isPackageRunning = false
     @State var hasLoadedPackageStatus = false
+    @State var checkPackageUpdatesOnLaunch: Bool
     @State var storageSummary: StorageManagementSummary = .empty
     @StateObject var consoleLogStore: ConsoleLogStore
     @State var completedDownloadResult: CompletedDownloadResult?
@@ -177,6 +179,7 @@ struct ContentView: View {
         _linkHistoryEntries = State(initialValue: Self.loadLinkHistoryEntries(limit: linkHistoryLimit))
         _appAppearanceMode = State(initialValue: Self.loadAppAppearanceMode())
         _versionsText = State(initialValue: Self.loadCachedPackageVersionsText())
+        _checkPackageUpdatesOnLaunch = State(initialValue: Self.loadCheckPackageUpdatesOnLaunch())
         _consoleLogStore = StateObject(wrappedValue: ConsoleLogStore())
     }
 
@@ -214,6 +217,7 @@ struct ContentView: View {
                 .tag(AppTab.download)
 
                 SettingsTabView(
+                    checkPackageUpdatesOnLaunch: $checkPackageUpdatesOnLaunch,
                     customArgsText: $customArgsText,
                     extraArgsText: $extraArgsText,
                     selectedPreset: $selectedPreset,
@@ -264,6 +268,7 @@ struct ContentView: View {
                 .tabItem {
                     Label(String(localized: "tab.settings"), systemImage: "slider.horizontal.3")
                 }
+                .badge(packageUpdatesAvailable ? Text(verbatim: "!") : nil)
                 .tag(AppTab.settings)
 
                 ConsoleTabView(logStore: consoleLogStore)
@@ -377,6 +382,9 @@ struct ContentView: View {
         .onChange(of: appAppearanceMode, initial: false) {
             persistPreferences()
         }
+        .onChange(of: checkPackageUpdatesOnLaunch, initial: false) {
+            persistPreferences()
+        }
         .sheet(item: $sharePayload) { payload in
             ShareSheet(activityItems: payload.activityItems)
         }
@@ -404,6 +412,9 @@ struct ContentView: View {
             syncIdleTimerDisabled()
             refreshImportedCookieFiles()
             consumePendingShortcutDownloadRequestIfNeeded()
+            if checkPackageUpdatesOnLaunch {
+                runPackageFlow(action: "check")
+            }
         }
         .onDisappear {
             clearIdleTimerOverride()

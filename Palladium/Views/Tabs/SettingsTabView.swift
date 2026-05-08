@@ -11,6 +11,7 @@ struct SettingsTabView: View {
         case about
     }
 
+    @Binding var checkPackageUpdatesOnLaunch: Bool
     @Binding var customArgsText: String
     @Binding var extraArgsText: String
     @Binding var selectedPreset: DownloadPreset
@@ -113,12 +114,25 @@ struct SettingsTabView: View {
 
                 Section(header: Text("settings.maintenance.section")) {
                     NavigationLink(value: SettingsRoute.packages) {
-                        settingsRow(
-                            title: String(localized: "settings.packages.title"),
-                            subtitle: String(localized: "settings.packages.subtitle"),
-                            icon: "shippingbox.fill",
-                            color: .indigo
-                        )
+                        HStack {
+                            settingsRow(
+                                title: String(localized: "settings.packages.title"),
+                                subtitle: updatesAvailable
+                                    ? String(localized: "settings.packages.subtitle.updates_available")
+                                    : String(localized: "settings.packages.subtitle"),
+                                icon: "shippingbox.fill",
+                                color: updatesAvailable ? .red : .indigo
+                            )
+                            if updatesAvailable {
+                                Spacer()
+                                Text(verbatim: "!")
+                                    .font(.caption2.bold())
+                                    .foregroundStyle(.white)
+                                    .frame(width: 20, height: 20)
+                                    .background(Color.red)
+                                    .clipShape(Circle())
+                            }
+                        }
                     }
                 }
 
@@ -140,6 +154,7 @@ struct SettingsTabView: View {
                 switch route {
                 case .useInterface:
                     UseInterfaceSettingsView(
+                        checkPackageUpdatesOnLaunch: $checkPackageUpdatesOnLaunch,
                         selectedPreset: $selectedPreset,
                         afterDownloadBehavior: $afterDownloadBehavior,
                         notificationsEnabled: $notificationsEnabled,

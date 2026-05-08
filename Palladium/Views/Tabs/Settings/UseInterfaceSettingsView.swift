@@ -1,6 +1,7 @@
 import SwiftUI
 
 struct UseInterfaceSettingsView: View {
+    @Binding var checkPackageUpdatesOnLaunch: Bool
     @Binding var selectedPreset: DownloadPreset
     @Binding var afterDownloadBehavior: AfterDownloadBehavior
     @Binding var notificationsEnabled: Bool
@@ -19,6 +20,7 @@ struct UseInterfaceSettingsView: View {
     let isRunning: Bool
 
     init(
+        checkPackageUpdatesOnLaunch: Binding<Bool>,
         selectedPreset: Binding<DownloadPreset>,
         afterDownloadBehavior: Binding<AfterDownloadBehavior>,
         notificationsEnabled: Binding<Bool>,
@@ -32,6 +34,7 @@ struct UseInterfaceSettingsView: View {
         appAppearanceMode: Binding<AppAppearanceMode>,
         isRunning: Bool
     ) {
+        _checkPackageUpdatesOnLaunch = checkPackageUpdatesOnLaunch
         _selectedPreset = selectedPreset
         _afterDownloadBehavior = afterDownloadBehavior
         _notificationsEnabled = notificationsEnabled
@@ -157,6 +160,15 @@ struct UseInterfaceSettingsView: View {
             Section("settings.notifications.title") {
                 Toggle("settings.notifications.toggle", isOn: $notificationsEnabled)
                     .disabled(isRunning)
+            }
+
+            Section {
+                Toggle("settings.ui.packages.auto_check", isOn: $checkPackageUpdatesOnLaunch)
+                    .disabled(isRunning)
+            } header: {
+                Text("settings.maintenance.section")
+            } footer: {
+                Text("settings.ui.packages.auto_check.help")
             }
         }
         .navigationTitle("settings.ui.title")

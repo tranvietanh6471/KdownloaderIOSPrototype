@@ -1937,6 +1937,16 @@
         }
       }
     },
+    "settings.packages.subtitle.updates_available" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Updates available!"
+          }
+        }
+      }
+    },
     "settings.packages.title" : {
       "localizations" : {
         "en" : {
@@ -2223,6 +2233,26 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Share sheet mode"
+          }
+        }
+      }
+    },
+    "settings.ui.packages.auto_check" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Check for package updates on launch"
+          }
+        }
+      }
+    },
+    "settings.ui.packages.auto_check.help" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Automatically checks for yt-dlp and pip updates when the app opens."
           }
         }
       }

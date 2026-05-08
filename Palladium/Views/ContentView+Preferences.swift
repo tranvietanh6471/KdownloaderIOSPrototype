@@ -59,6 +59,7 @@ extension ContentView {
         defaults.set(linkHistoryEnabled, forKey: Self.linkHistoryEnabledDefaultsKey)
         defaults.set(linkHistoryLimit, forKey: Self.linkHistoryLimitDefaultsKey)
         defaults.set(appAppearanceMode.rawValue, forKey: Self.appAppearanceModeDefaultsKey)
+        defaults.set(checkPackageUpdatesOnLaunch, forKey: Self.checkPackageUpdatesOnLaunchDefaultsKey)
     }
 
     static func loadSelectedPreset(rememberSelection: Bool) -> DownloadPreset {
@@ -301,5 +302,12 @@ extension ContentView {
             return fallback
         }
         return value
+    }
+
+    static func loadCheckPackageUpdatesOnLaunch() -> Bool {
+        if UserDefaults.standard.object(forKey: checkPackageUpdatesOnLaunchDefaultsKey) == nil {
+            return false
+        }
+        return UserDefaults.standard.bool(forKey: checkPackageUpdatesOnLaunchDefaultsKey)
     }
 }
