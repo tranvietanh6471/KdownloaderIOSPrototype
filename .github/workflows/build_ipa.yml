@@ -129,8 +129,8 @@ jobs:
         status=$?
         cat build.log
         if [ "$status" -ne 0 ]; then
-          tail_text=$(tail -n 80 build.log | python3 -c 'import sys, urllib.parse; print(urllib.parse.quote(sys.stdin.read()[-6000:]))')
-          echo "::error title=Build log tail::$tail_text"
+          relevant_text=$(grep -Ei '(^|[^A-Za-z])(error:|fatal error|failed|The following build commands failed|CompileSwift|SwiftCompile|no such module|cannot find|ambiguous|extra argument|missing argument)' build.log | tail -n 120 | python3 -c 'import sys, urllib.parse; print(urllib.parse.quote(sys.stdin.read()[-6000:]))')
+          echo "::error title=Build relevant log::$relevant_text"
           exit "$status"
         fi
 
