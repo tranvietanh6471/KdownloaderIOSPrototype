@@ -60,7 +60,7 @@ class ShareViewController: UIViewController {
         let encodedURL = url.absoluteString.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
         
         // Construct the URL that should open your main app, embedding the shared URL as a parameter
-        guard let appURL = URL(string: "palladium://download?url=\(encodedURL)") else {
+        guard let appURL = URL(string: "kdownloader://download?url=\(encodedURL)") else {
             dismissExtension()
             return
         }

@@ -110,7 +110,7 @@ private enum PythonRuntimeBootstrap {
             let readmeURL = documents.appendingPathComponent("README.txt")
             if !FileManager.default.fileExists(atPath: readmeURL.path) {
                 let text = """
-                Palladium app storage
+                Kdownloader app storage
 
                 Temp: temporary video/audio output files
                 Saved: files copied via "Save to App Folder"

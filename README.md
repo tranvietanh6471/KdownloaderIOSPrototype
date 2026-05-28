@@ -1,55 +1,31 @@
-<div align="center">
+# Kdownloader
 
-<img src="Palladium/Resources/Assets.xcassets/palladium_dark.imageset/palladium_dark.png" alt="Palladium Logo" width="200">
+Kdownloader is an iOS media downloader prototype based on the Palladium core. It runs `yt-dlp`, `ffmpeg`, and Python tooling on-device, then adds a browser-first workflow and an in-app file/player surface.
 
-# Palladium
+## What This Build Adds
 
-On-device iOS media downloader powered by `yt-dlp`, `ffmpeg`, and `PythonKit`.
+- Browser tab with video URL detection and a download button.
+- Download tab powered by Palladium's existing yt-dlp/ffmpeg pipeline.
+- Files tab for `Documents`, `Saved`, and `Temp`.
+- Create, rename, move, and delete files or folders inside the app sandbox.
+- Integrated AVPlayer/QuickLook previews for downloaded media and documents.
+- Share extension and URL scheme updated to `kdownloader://download?url=...`.
 
-</div>
+## Build
 
-<div align="center">
-  <a href="https://getpalladium.app" style="text-decoration:none; font-size:18px;">
-    getpalladium.app
-  </a>
-</div>
+GitHub Actions builds an unsigned IPA artifact from `build_ipa.sh`. Local builds require Xcode on macOS plus the frameworks described in `BUILD.md`.
 
-## What It Does
+## Credits
 
-- Downloads media directly on iPhone and iPad
-- Uses `yt-dlp` for extraction and `ffmpeg` for processing
-- Runs Python tooling inside the app
+This app is derived from Palladium by TfourJ and keeps the same GPLv3 license requirements.
 
-> [!NOTE]
-> **AI-assisted development:** This app was esentially vibecoded (i needed something fast to avoid dealing with youtube bot protection when using my app [Nickel](ttps://github.com/tfourj/Nickel)).
-> While it is actively tested and continuously improved, you may encounter bugs.
-> Feedback for issues is greatly appreciated. Please open an issue report if you find one and we’ll work to fix it.
-
-
-## Download
-
-- [Palladium Downloads](https://getpalladium.app/downloads) (TestFlight, AltStore PAL, .ipa, ~~AltStore Classic~~)
-- .ipa from GitHub
-  - Stable: [GitHub Releases](https://github.com/tfourj/Palladium/releases)
-  - Nightly: [GitHub Actions](https://github.com/tfourj/Palladium/actions)
-
-## Contributing
-
-Pull requests are welcome! For major changes, please open an issue first to discuss what you would like to change.
-
-Build instructions: [BUILD.md](BUILD.md)
-
-## Credits & Acknowledgments
-
-
-- [`yt-dlp`](https://github.com/yt-dlp/yt-dlp)
-- [`yt-dlp-apple-webkit-jsi`](https://github.com/grqz/yt-dlp-apple-webkit-jsi)
-- [`ffmpeg`](https://ffmpeg.org/)
-- [`PythonKit`](https://github.com/pvieito/PythonKit)
-- [`python-apple-support`](https://github.com/beeware/Python-Apple-support)
-- [`LAME`](https://lame.sourceforge.io/)
-- [`SwiftFFmpeg-iOS`](https://github.com/tfourj/SwiftFFmpeg-iOS)
+- Palladium: https://github.com/tfourj/Palladium
+- yt-dlp: https://github.com/yt-dlp/yt-dlp
+- ffmpeg: https://ffmpeg.org/
+- PythonKit: https://github.com/pvieito/PythonKit
+- python-apple-support: https://github.com/beeware/Python-Apple-support
+- SwiftFFmpeg-iOS: https://github.com/tfourj/SwiftFFmpeg-iOS
 
 ## License
 
-This project is licensed under the GPLv3 - see the [License](LICENSE) file for details.
+GPLv3. See [LICENSE](LICENSE).

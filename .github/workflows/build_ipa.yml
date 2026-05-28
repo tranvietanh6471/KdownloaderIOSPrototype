@@ -1,4 +1,4 @@
-name: Build Palladium .ipa (Unsigned)
+name: Build Kdownloader .ipa (Unsigned)
 
 on:
   push:
@@ -128,5 +128,5 @@ jobs:
     - name: Upload IPA artifact
       uses: actions/upload-artifact@v4
       with:
-        name: Palladium
+        name: Kdownloader
         path: build/*.ipa

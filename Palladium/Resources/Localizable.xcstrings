@@ -52,7 +52,7 @@
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Palladium"
+            "value" : "Kdownloader"
           }
         }
       }
@@ -392,7 +392,7 @@
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Imported files are copied into Palladium storage so yt-dlp can reuse them later."
+            "value" : "Imported files are copied into Kdownloader storage so yt-dlp can reuse them later."
           }
         }
       }
@@ -1472,7 +1472,7 @@
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Keep the whole download folder in Palladium/Saved"
+            "value" : "Keep the whole download folder in Kdownloader/Saved"
           }
         }
       }
@@ -1482,7 +1482,7 @@
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Keep a copy in Palladium/Saved"
+            "value" : "Keep a copy in Kdownloader/Saved"
           }
         }
       }
@@ -1992,7 +1992,7 @@
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "This only affects Palladium's temporary download folder. Use it to remove stale run folders without touching Saved Files."
+            "value" : "This only affects Kdownloader's temporary download folder. Use it to remove stale run folders without touching Saved Files."
           }
         }
       }
@@ -2042,7 +2042,7 @@
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Saved Files contains downloads you explicitly kept. Clearing this section removes those copies from Palladium storage."
+            "value" : "Saved Files contains downloads you explicitly kept. Clearing this section removes those copies from Kdownloader storage."
           }
         }
       }
@@ -2292,7 +2292,7 @@
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Shows most live yt-dlp, Palladium, and downloader log lines in the main progress label while a download is running."
+            "value" : "Shows most live yt-dlp, Kdownloader, and downloader log lines in the main progress label while a download is running."
           }
         }
       }
@@ -2372,7 +2372,7 @@
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Another download or package task is already running. Palladium filled in the shortcut URL, but you need to start it again after the current task finishes."
+            "value" : "Another download or package task is already running. Kdownloader filled in the shortcut URL, but you need to start it again after the current task finishes."
           }
         }
       }
@@ -2422,7 +2422,7 @@
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Open Palladium and start a download with the selected preset and save destination."
+            "value" : "Open Kdownloader and start a download with the selected preset and save destination."
           }
         }
       }
@@ -2432,7 +2432,7 @@
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Opening Palladium to start the download."
+            "value" : "Opening Kdownloader to start the download."
           }
         }
       }
@@ -2452,7 +2452,7 @@
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Shortcut URL loaded into Palladium."
+            "value" : "Shortcut URL loaded into Kdownloader."
           }
         }
       }
@@ -2492,7 +2492,7 @@
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "This removes everything in Palladium/Documents/Temp, including old run folders."
+            "value" : "This removes everything in Kdownloader/Documents/Temp, including old run folders."
           }
         }
       }
@@ -2512,7 +2512,7 @@
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "This removes everything in Palladium/Documents/Saved."
+            "value" : "This removes everything in Kdownloader/Documents/Saved."
           }
         }
       }

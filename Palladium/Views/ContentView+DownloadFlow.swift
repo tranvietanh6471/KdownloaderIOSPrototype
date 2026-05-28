@@ -413,7 +413,7 @@ extension ContentView {
     }
 
     func handleIncomingDownloadURL(_ incomingURL: URL) {
-        guard incomingURL.scheme?.lowercased() == "palladium",
+        guard ["palladium", "kdownloader"].contains(incomingURL.scheme?.lowercased() ?? ""),
               incomingURL.host?.lowercased() == "download" else {
             return
         }

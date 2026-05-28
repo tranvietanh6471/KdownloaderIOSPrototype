@@ -11,7 +11,9 @@ import Foundation
 
 struct ContentView: View {
     enum AppTab: Hashable {
+        case browser
         case download
+        case files
         case settings
         case console
     }
@@ -106,7 +108,7 @@ struct ContentView: View {
     @State var linkHistoryLimit: Int
     @State var linkHistoryEntries: [LinkHistoryEntry]
     @State var appAppearanceMode: AppAppearanceMode
-    @State var selectedTab: AppTab = .download
+    @State var selectedTab: AppTab = .browser
     @State var packageStatusText = "idle"
     @State var versionsText: String
     @State var packageUpdatesAvailable = false
@@ -186,6 +188,26 @@ struct ContentView: View {
     var body: some View {
         ZStack(alignment: .top) {
             TabView(selection: $selectedTab) {
+                BrowserTabView(
+                    isRunning: isRunning || isPackageRunning,
+                    onDownloadURL: { detectedURL in
+                        let trimmedURL = detectedURL.trimmingCharacters(in: .whitespacesAndNewlines)
+                        guard !trimmedURL.isEmpty else { return }
+                        urlText = trimmedURL
+                        selectedTab = .download
+                        if isRunning || isPackageRunning {
+                            showTemporaryToast("Link loaded into Downloads")
+                            return
+                        }
+                        appendConsoleText("[kdownloader] browser download started: \(trimmedURL)\n", source: .app)
+                        runDownloadFlow(urlOverride: trimmedURL, presetOverride: selectedPreset)
+                    }
+                )
+                .tabItem {
+                    Label("Browser", systemImage: "safari")
+                }
+                .tag(AppTab.browser)
+
                 DownloadTabView(
                     statusText: $statusText,
                     urlText: $urlText,
@@ -215,6 +237,12 @@ struct ContentView: View {
                     Label(String(localized: "tab.download"), systemImage: "arrow.down.circle")
                 }
                 .tag(AppTab.download)
+
+                FileBrowserTabView()
+                    .tabItem {
+                        Label("Files", systemImage: "folder")
+                    }
+                    .tag(AppTab.files)
 
                 SettingsTabView(
                     checkPackageUpdatesOnLaunch: $checkPackageUpdatesOnLaunch,

@@ -17,7 +17,7 @@ else
   echo "📦 Current commit has no tag, using commit for IPA name: ${BUILD_REF}"
 fi
 
-IPA_NAME="Palladium-${BUILD_REF}.ipa"
+IPA_NAME="Kdownloader-${BUILD_REF}.ipa"
 echo "📦 IPA will be named: ${IPA_NAME}"
 
 # -----------------------------

@@ -319,7 +319,7 @@
 					"@executable_path/../../Frameworks",
 				);
 				MARKETING_VERSION = "$(APP_VERSION)";
-				PRODUCT_BUNDLE_IDENTIFIER = com.tfourj.Palladium.ShareExtension;
+				PRODUCT_BUNDLE_IDENTIFIER = com.tranvietanh6471.Kdownloader.ShareExtension;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SKIP_INSTALL = YES;
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
@@ -353,7 +353,7 @@
 					"@executable_path/../../Frameworks",
 				);
 				MARKETING_VERSION = "$(APP_VERSION)";
-				PRODUCT_BUNDLE_IDENTIFIER = com.tfourj.Palladium.ShareExtension;
+				PRODUCT_BUNDLE_IDENTIFIER = com.tranvietanh6471.Kdownloader.ShareExtension;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SKIP_INSTALL = YES;
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
@@ -513,9 +513,9 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = Palladium/Info.plist;
 				INFOPLIST_KEY_APP_FINAL = "$(APP_FINAL)";
-				INFOPLIST_KEY_CFBundleDisplayName = Palladium;
+				INFOPLIST_KEY_CFBundleDisplayName = Kdownloader;
 				INFOPLIST_KEY_LSSupportsOpeningDocumentsInPlace = YES;
-				INFOPLIST_KEY_NSCameraUsageDescription = "Palladium does not use the camera directly. This message is included because bundled system APIs may reference camera access.";
+				INFOPLIST_KEY_NSCameraUsageDescription = "Kdownloader does not use the camera directly. This message is included because bundled system APIs may reference camera access.";
 				INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription = "Save downloaded videos to your photo library.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
@@ -535,7 +535,7 @@
 					"-Wl,-u,_palladium_ffmpeg_bridge_run",
 					"-Wl,-u,_palladium_ffmpeg_bridge_free",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = com.tfourj.Palladium;
+				PRODUCT_BUNDLE_IDENTIFIER = com.tranvietanh6471.Kdownloader;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				STRIP_INSTALLED_PRODUCT = NO;
@@ -565,9 +565,9 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = Palladium/Info.plist;
 				INFOPLIST_KEY_APP_FINAL = "$(APP_FINAL)";
-				INFOPLIST_KEY_CFBundleDisplayName = Palladium;
+				INFOPLIST_KEY_CFBundleDisplayName = Kdownloader;
 				INFOPLIST_KEY_LSSupportsOpeningDocumentsInPlace = YES;
-				INFOPLIST_KEY_NSCameraUsageDescription = "Palladium does not use the camera directly. This message is included because bundled system APIs may reference camera access.";
+				INFOPLIST_KEY_NSCameraUsageDescription = "Kdownloader does not use the camera directly. This message is included because bundled system APIs may reference camera access.";
 				INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription = "Save downloaded videos to your photo library.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
@@ -587,7 +587,7 @@
 					"-Wl,-u,_palladium_ffmpeg_bridge_run",
 					"-Wl,-u,_palladium_ffmpeg_bridge_free",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = com.tfourj.Palladium;
+				PRODUCT_BUNDLE_IDENTIFIER = com.tranvietanh6471.Kdownloader;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
