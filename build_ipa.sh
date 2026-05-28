@@ -96,6 +96,7 @@ mkdir -p "$BUILD_DIR"
 # -----------------------------
 echo "--- Building project ---"
 xcodebuild clean build \
+  -quiet \
   -project "$PROJECT_NAME.xcodeproj" \
   -scheme "$SCHEME_NAME" \
   -configuration Release \
@@ -111,6 +112,7 @@ xcodebuild clean build \
 # -----------------------------
 echo "--- Archiving project ---"
 xcodebuild archive \
+  -quiet \
   -project "$PROJECT_NAME.xcodeproj" \
   -scheme "$SCHEME_NAME" \
   -configuration Release \
