@@ -135,28 +135,52 @@ extension ContentView {
     func runDownloadFlow(
         urlOverride: String? = nil,
         presetOverride: DownloadPreset? = nil,
-        afterDownloadOverride: AfterDownloadBehavior? = nil
+        afterDownloadOverride: AfterDownloadBehavior? = nil,
+        outputTitleHint: String? = nil,
+        resumeContext: DownloadResumeContext? = nil
     ) {
         guard !isRunning, !isPackageRunning else { return }
-        let targetURL = (urlOverride ?? urlText).trimmingCharacters(in: .whitespacesAndNewlines)
+        if isDownloadPaused, resumeContext == nil {
+            appendConsoleText("[palladium] download is paused; resume or cancel it before starting another download\n")
+            selectedTab = .download
+            return
+        }
+        let targetURL = (resumeContext?.url ?? urlOverride ?? urlText).trimmingCharacters(in: .whitespacesAndNewlines)
         guard !targetURL.isEmpty else { return }
+        let isResumeRun = resumeContext != nil
 
-        consoleLogStore.clearAll()
+        if !isResumeRun {
+            consoleLogStore.clearAll()
+        }
         downloadErrorText = nil
         completedDownloadResult = nil
         playlistProgress = nil
+        if !isResumeRun {
+            downloadProgressItems = []
+            activeDownloadProgressItemID = nil
+            pausedDownloadContext = nil
+        }
+        isDownloadPaused = false
 
-        do {
-            let removedCount = try clearDownloadsDirectoryContents()
-            appendConsoleText("[palladium] cleared downloads folder entries: \(removedCount)\n")
-        } catch {
-            appendConsoleText("[palladium] failed to clear downloads folder: \(error.localizedDescription)\n")
+        if !isResumeRun {
+            do {
+                let removedCount = try clearDownloadsDirectoryContents()
+                appendConsoleText("[palladium] cleared downloads folder entries: \(removedCount)\n")
+            } catch {
+                appendConsoleText("[palladium] failed to clear downloads folder: \(error.localizedDescription)\n")
+            }
         }
 
         let runOutputURL: URL
         do {
-            runOutputURL = try makeDownloadRunDirectory()
-            appendConsoleText("[palladium] run output folder: \(runOutputURL.lastPathComponent)\n")
+            if let resumeContext {
+                runOutputURL = resumeContext.runOutputURL
+                try FileManager.default.createDirectory(at: runOutputURL, withIntermediateDirectories: true)
+                appendConsoleText("[palladium] resuming in folder: \(runOutputURL.lastPathComponent)\n")
+            } else {
+                runOutputURL = try makeDownloadRunDirectory()
+                appendConsoleText("[palladium] run output folder: \(runOutputURL.lastPathComponent)\n")
+            }
         } catch {
             appendConsoleText("[palladium] failed to create run output folder: \(error.localizedDescription)\n")
             downloadErrorText = String(localized: "download.error.prepare_folder")
@@ -169,6 +193,7 @@ extension ContentView {
         statusText = "running"
         progressText = String(localized: "download.status.running")
         downloadCancelRequested = false
+        downloadPauseRequested = false
         lastDownloadProgressPercent = nil
         ffmpegProgressDurationSeconds = nil
         pendingDownloadProgressLine = ""
@@ -178,10 +203,19 @@ extension ContentView {
         let readHandle = logPipe.fileHandleForReading
         let writeFD = logPipe.fileHandleForWriting.fileDescriptor
         let liveLogFD: Int32? = writeFD
-        let presetAtStart = (presetOverride ?? selectedPreset).pythonValue
+        let presetAtStartValue = resumeContext?.preset ?? presetOverride ?? selectedPreset
+        let presetAtStart = presetAtStartValue.pythonValue
         let extraArgsAtStart = extraArgsText.trimmingCharacters(in: .whitespacesAndNewlines)
+        let outputTitleHintAtStart = (resumeContext?.outputTitleHint ?? outputTitleHint)?.trimmingCharacters(in: .whitespacesAndNewlines)
         let presetArgsJSONAtStart = buildPresetArgumentsJSON()
-        let afterDownloadBehaviorAtStart = afterDownloadOverride ?? afterDownloadBehavior
+        let afterDownloadBehaviorAtStart = resumeContext?.afterDownloadBehavior ?? afterDownloadOverride ?? afterDownloadBehavior
+        activeDownloadContext = DownloadResumeContext(
+            url: targetURL,
+            preset: presetAtStartValue,
+            afterDownloadBehavior: afterDownloadBehaviorAtStart,
+            outputTitleHint: outputTitleHintAtStart,
+            runOutputURL: runOutputURL
+        )
         let linkHistoryEnabledAtStart = linkHistoryEnabled
         let downloadPlaylistAtStart = downloadPlaylist
         let downloadSubtitlesAtStart = downloadSubtitles
@@ -229,6 +263,8 @@ extension ContentView {
                 preset: presetAtStart,
                 presetArgsJSON: presetArgsJSONAtStart,
                 extraArgs: extraArgsAtStart,
+                outputTitleHint: outputTitleHintAtStart ?? "",
+                allowResume: isResumeRun,
                 downloadPlaylist: downloadPlaylistAtStart,
                 downloadSubtitles: downloadSubtitlesAtStart,
                 embedThumbnail: embedThumbnailAtStart,
@@ -265,9 +301,11 @@ extension ContentView {
             }
 
             let cancelWasRequested = downloadCancelRequested
+            let pauseWasRequested = downloadPauseRequested
             isRunning = false
             syncIdleTimerDisabled()
             downloadCancelRequested = false
+            downloadPauseRequested = false
             lastDownloadProgressPercent = nil
             ffmpegProgressDurationSeconds = nil
             pendingDownloadProgressLine = ""
@@ -283,18 +321,40 @@ extension ContentView {
             let finalResultKind = cancelWasRequested ? "cancelled" : (outcome.resultKind ?? outcome.statusText)
             statusText = finalResultKind
             playlistProgress = outcome.playlistProgress ?? playlistProgress
-            if finalResultKind == "cancelled" {
+            if pauseWasRequested && finalResultKind == "cancelled" {
+                isDownloadPaused = true
+                pausedDownloadContext = activeDownloadContext
+                progressText = "Paused"
+                statusText = "paused"
+                markUnfinishedDownloadProgressItems(.paused)
+                showDownloadActionSheet = false
+                completedDownloadResult = nil
+                completedPhotosCompatibility = .checking
+                reopenDownloadActionAfterAlert = false
+                return
+            } else if finalResultKind == "cancelled" {
                 progressText = String(localized: "download.status.cancelled")
+                markDownloadProgressItems(.cancelled)
+                activeDownloadContext = nil
+                pausedDownloadContext = nil
                 showDownloadActionSheet = false
                 completedDownloadResult = nil
                 completedPhotosCompatibility = .checking
                 reopenDownloadActionAfterAlert = false
             } else if finalResultKind == "partial" {
                 progressText = String(localized: "download.status.partial")
+                markUnfinishedDownloadProgressItems(.failed)
             } else {
                 progressText = finalResultKind == "success"
                     ? String(localized: "download.status.complete")
                     : String(localized: "download.status.failed")
+                if finalResultKind == "success" {
+                    markDownloadProgressItems(.completed)
+                    activeDownloadContext = nil
+                    pausedDownloadContext = nil
+                } else {
+                    markUnfinishedDownloadProgressItems(.failed)
+                }
             }
             if finalResultKind == "error" {
                 downloadErrorText = downloadErrorDetails(from: outcome)
@@ -447,14 +507,49 @@ extension ContentView {
     }
 
     func cancelDownloadFlow() {
+        if isDownloadPaused {
+            isDownloadPaused = false
+            pausedDownloadContext = nil
+            activeDownloadContext = nil
+            markUnfinishedDownloadProgressItems(.cancelled)
+            progressText = String(localized: "download.status.cancelled")
+            statusText = "cancelled"
+            return
+        }
         guard isRunning else { return }
         downloadCancelRequested = true
+        downloadPauseRequested = false
         requestActiveOperationCancellation()
         currentDownloadTask?.cancel()
         pendingDownloadProgressLine = ""
         ffmpegProgressDurationSeconds = nil
         isInstallingPackagesDuringDownload = false
         progressText = String(localized: "download.status.cancelling")
+    }
+
+    func pauseDownloadFlow() {
+        guard isRunning else { return }
+        downloadPauseRequested = true
+        downloadCancelRequested = false
+        requestActiveOperationCancellation()
+        currentDownloadTask?.cancel()
+        pendingDownloadProgressLine = ""
+        ffmpegProgressDurationSeconds = nil
+        isInstallingPackagesDuringDownload = false
+        progressText = "Pausing..."
+    }
+
+    func resumeDownloadFlow() {
+        guard isDownloadPaused, let pausedDownloadContext else { return }
+        isDownloadPaused = false
+        markUnfinishedDownloadProgressItems(.running)
+        runDownloadFlow(
+            urlOverride: pausedDownloadContext.url,
+            presetOverride: pausedDownloadContext.preset,
+            afterDownloadOverride: pausedDownloadContext.afterDownloadBehavior,
+            outputTitleHint: pausedDownloadContext.outputTitleHint,
+            resumeContext: pausedDownloadContext
+        )
     }
 
     func updateProgress(from chunk: String) {
@@ -492,6 +587,7 @@ extension ContentView {
         if trimmed.hasPrefix("[palladium][ffmpeg-progress] duration=") {
             ffmpegProgressDurationSeconds = parseFFmpegDuration(from: trimmed)
         } else if trimmed.hasPrefix("[palladium][ffmpeg-progress] time=") {
+            updateActiveDownloadProgressForProcessing(trimmed)
             if let update = parseFFmpegProgressUpdate(from: trimmed) {
                 if let progressPercent = update.percent {
                     lastDownloadProgressPercent = progressPercent
@@ -510,11 +606,14 @@ extension ContentView {
         } else if detailedProgressEnabled, shouldShowDetailedProgressLine(trimmed) {
             progressText = trimmed
         } else if trimmed.contains("[download]") {
+            updateDownloadProgressList(from: trimmed)
             guard shouldAcceptDownloadProgressLine(trimmed) else { return }
             progressText = trimmed
         } else if trimmed.contains("[Merger]") {
+            updateActiveDownloadProgressForProcessing(trimmed)
             progressText = trimmed
         } else if trimmed.contains("[VideoRemuxer]") {
+            updateActiveDownloadProgressForProcessing(trimmed)
             if trimmed.localizedCaseInsensitiveContains("already is in target format") {
                 progressText = String(localized: "download.status.merge_finished")
             } else {
@@ -526,12 +625,191 @@ extension ContentView {
         } else if trimmed.contains("[palladium] downloaded file:") {
             progressText = String(localized: "download.status.complete")
         } else if trimmed.hasPrefix("[ExtractAudio]") {
+            updateActiveDownloadProgressForProcessing(trimmed)
             progressText = trimmed
         } else if trimmed.hasPrefix("[palladium] running yt-dlp") {
             isInstallingPackagesDuringDownload = false
             progressText = String(localized: "download.status.running")
             lastDownloadProgressPercent = nil
         }
+    }
+
+    private func updateDownloadProgressList(from line: String) {
+        if let destination = parseDownloadDestination(from: line) {
+            let fileName = URL(fileURLWithPath: destination).lastPathComponent
+            upsertActiveDownloadProgressItem(
+                fileName: fileName.isEmpty ? destination : fileName,
+                percent: nil,
+                sizeText: nil,
+                speedText: nil,
+                etaText: nil,
+                detailText: String(localized: "download.status.running"),
+                state: .running
+            )
+            return
+        }
+
+        guard let percent = extractDownloadPercent(from: line) else {
+            if line.localizedCaseInsensitiveContains("has already been downloaded") {
+                updateActiveDownloadProgressItem { item in
+                    item.percent = 100
+                    item.state = .completed
+                    item.detailText = String(localized: "download.status.complete")
+                }
+            }
+            return
+        }
+
+        let metrics = parseDownloadMetrics(from: line)
+        if activeDownloadProgressItemID == nil {
+            upsertActiveDownloadProgressItem(
+                fileName: fallbackActiveDownloadName(),
+                percent: percent,
+                sizeText: metrics.size,
+                speedText: metrics.speed,
+                etaText: metrics.eta,
+                detailText: line,
+                state: percent >= 100 ? .completed : .running
+            )
+            return
+        }
+
+        updateActiveDownloadProgressItem { item in
+            item.percent = min(max(percent, 0), 100)
+            if let size = metrics.size { item.sizeText = size }
+            if let speed = metrics.speed { item.speedText = speed }
+            if let eta = metrics.eta { item.etaText = eta }
+            item.detailText = line
+            item.state = percent >= 100 ? .completed : .running
+        }
+    }
+
+    private func updateActiveDownloadProgressForProcessing(_ line: String) {
+        guard activeDownloadProgressItemID != nil else { return }
+        updateActiveDownloadProgressItem { item in
+            if item.state != .completed {
+                item.state = .processing
+                item.detailText = line
+            }
+        }
+    }
+
+    private func upsertActiveDownloadProgressItem(
+        fileName: String,
+        percent: Double?,
+        sizeText: String?,
+        speedText: String?,
+        etaText: String?,
+        detailText: String?,
+        state: DownloadProgressItem.State
+    ) {
+        if let existingIndex = downloadProgressItems.firstIndex(where: { $0.fileName == fileName }) {
+            activeDownloadProgressItemID = downloadProgressItems[existingIndex].id
+            updateActiveDownloadProgressItem { item in
+                item.percent = percent ?? item.percent
+                item.sizeText = sizeText ?? item.sizeText
+                item.speedText = speedText ?? item.speedText
+                item.etaText = etaText ?? item.etaText
+                item.detailText = detailText ?? item.detailText
+                item.state = state
+            }
+            return
+        }
+
+        let item = DownloadProgressItem(
+            fileName: fileName,
+            percent: percent,
+            sizeText: sizeText,
+            speedText: speedText,
+            etaText: etaText,
+            detailText: detailText,
+            state: state
+        )
+        downloadProgressItems.append(item)
+        activeDownloadProgressItemID = item.id
+    }
+
+    private func updateActiveDownloadProgressItem(_ update: (inout DownloadProgressItem) -> Void) {
+        guard let activeDownloadProgressItemID,
+              let index = downloadProgressItems.firstIndex(where: { $0.id == activeDownloadProgressItemID }) else {
+            return
+        }
+        update(&downloadProgressItems[index])
+    }
+
+    private func markDownloadProgressItems(_ state: DownloadProgressItem.State) {
+        for index in downloadProgressItems.indices {
+            downloadProgressItems[index].state = state
+            if state == .completed {
+                downloadProgressItems[index].percent = 100
+                downloadProgressItems[index].etaText = nil
+                downloadProgressItems[index].detailText = String(localized: "download.status.complete")
+            }
+        }
+    }
+
+    private func markUnfinishedDownloadProgressItems(_ state: DownloadProgressItem.State) {
+        for index in downloadProgressItems.indices {
+            guard downloadProgressItems[index].state != .completed else { continue }
+            downloadProgressItems[index].state = state
+            switch state {
+            case .paused:
+                downloadProgressItems[index].detailText = "Paused"
+            case .failed:
+                downloadProgressItems[index].detailText = String(localized: "download.status.failed")
+            case .cancelled:
+                downloadProgressItems[index].detailText = String(localized: "download.status.cancelled")
+            default:
+                break
+            }
+        }
+    }
+
+    private func parseDownloadDestination(from line: String) -> String? {
+        let patterns = [
+            #"^\[download\]\s+Destination:\s+(.+)$"#,
+            #"^\[download\]\s+(.+)\s+has already been downloaded$"#,
+            #"^\[download\]\s+(.+)\s+has already been downloaded and merged$"#
+        ]
+        for pattern in patterns {
+            if let value = firstRegexCapture(in: line, pattern: pattern) {
+                return value.trimmingCharacters(in: .whitespacesAndNewlines.union(CharacterSet(charactersIn: "\"")))
+            }
+        }
+        return nil
+    }
+
+    private func parseDownloadMetrics(from line: String) -> (size: String?, speed: String?, eta: String?) {
+        let size = firstRegexCapture(in: line, pattern: #"\bof\s+~?\s*([0-9.]+\s*[KMGTPE]?i?B)(?:\s|$)"#)
+            ?? firstRegexCapture(in: line, pattern: #"\bof\s+~?\s*(Unknown size)"#)
+        let speed = firstRegexCapture(in: line, pattern: #"\bat\s+([^\s]+/s)"#)
+        let eta = firstRegexCapture(in: line, pattern: #"\bETA\s+([0-9:]+|Unknown)"#)
+        return (size, speed, eta)
+    }
+
+    private func firstRegexCapture(in text: String, pattern: String) -> String? {
+        guard let regex = try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive]) else {
+            return nil
+        }
+        let range = NSRange(text.startIndex..<text.endIndex, in: text)
+        guard let match = regex.firstMatch(in: text, options: [], range: range),
+              match.numberOfRanges > 1,
+              let captureRange = Range(match.range(at: 1), in: text) else {
+            return nil
+        }
+        return String(text[captureRange])
+    }
+
+    private func fallbackActiveDownloadName() -> String {
+        let trimmedURL = urlText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let url = URL(string: trimmedURL) else {
+            return String(localized: "download.fallback_title")
+        }
+        let lastPathComponent = url.lastPathComponent.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !lastPathComponent.isEmpty {
+            return lastPathComponent
+        }
+        return url.host ?? String(localized: "download.fallback_title")
     }
 
     private func handlePackageInstallProgressLine(_ line: String) -> Bool {

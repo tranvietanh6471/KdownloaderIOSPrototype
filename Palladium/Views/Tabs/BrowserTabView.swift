@@ -4,11 +4,12 @@ import Combine
 
 struct BrowserTabView: View {
     let isRunning: Bool
-    let onDownloadURL: (String) -> Void
+    let onDownloadURL: (String, String?) -> Void
 
     @StateObject private var controller = BrowserController()
     @State private var addressText = "https://www.google.com"
     @State private var detectedVideoURL = ""
+    @State private var detectedTitleHint = ""
 
     var body: some View {
         NavigationStack {
@@ -16,6 +17,7 @@ struct BrowserTabView: View {
                 BrowserWebView(
                     controller: controller,
                     detectedVideoURL: $detectedVideoURL,
+                    detectedTitleHint: $detectedTitleHint,
                     addressText: $addressText
                 )
                 .ignoresSafeArea(edges: .bottom)
@@ -33,7 +35,7 @@ struct BrowserTabView: View {
                         Spacer(minLength: 8)
 
                         Button {
-                            onDownloadURL(detectedVideoURL)
+                            onDownloadURL(detectedVideoURL, detectedTitleHint)
                         } label: {
                             Label(isRunning ? "Queue" : "Download", systemImage: "arrow.down.circle.fill")
                                 .font(.footnote.weight(.bold))
@@ -150,6 +152,7 @@ final class BrowserController: ObservableObject {
 private struct BrowserWebView: UIViewRepresentable {
     @ObservedObject var controller: BrowserController
     @Binding var detectedVideoURL: String
+    @Binding var detectedTitleHint: String
     @Binding var addressText: String
 
     func makeCoordinator() -> Coordinator {
@@ -168,6 +171,13 @@ private struct BrowserWebView: UIViewRepresentable {
             injectionTime: .atDocumentEnd,
             forMainFrameOnly: false
         ))
+        WKContentRuleListStore.default().compileContentRuleList(
+            forIdentifier: "kdownloaderContentBlocker",
+            encodedContentRuleList: Self.contentBlockerRules
+        ) { contentRuleList, _ in
+            guard let contentRuleList else { return }
+            contentController.add(contentRuleList)
+        }
         configuration.userContentController = contentController
 
         let webView = WKWebView(frame: .zero, configuration: configuration)
@@ -203,6 +213,7 @@ private struct BrowserWebView: UIViewRepresentable {
             parent.controller.updateNavigationState()
             parent.addressText = webView.url?.absoluteString ?? parent.addressText
             parent.detectedVideoURL = ""
+            parent.detectedTitleHint = ""
         }
 
         func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
@@ -217,6 +228,7 @@ private struct BrowserWebView: UIViewRepresentable {
                       let url = payload["url"] as? String,
                       !url.isEmpty {
                 parent.detectedVideoURL = url
+                parent.detectedTitleHint = (payload["pageTitle"] as? String) ?? ""
             }
         }
     }
@@ -227,36 +239,75 @@ private struct BrowserWebView: UIViewRepresentable {
       window.kdownloaderInstalled = true;
       let lastURL = "";
       const videoPattern = /\\.(m3u8|mp4|m4v|mov|webm|mpd|ts)(\\?|#|$)/i;
-      const ignoredPattern = /(doubleclick|googlesyndication|google-analytics|facebook\\.com\\/tr)/i;
+      const adHostPattern = /(^|\\.)(doubleclick\\.net|googlesyndication\\.com|googleadservices\\.com|adservice\\.google\\.|adnxs\\.com|adsrvr\\.org|pubmatic\\.com|rubiconproject\\.com|openx\\.net|criteo\\.com|taboola\\.com|outbrain\\.com|scorecardresearch\\.com|moatads\\.com|imasdk\\.googleapis\\.com)$/i;
+      const adPathPattern = /(^|[\\/_\\-.?&=])(ad|ads|advert|advertising|vast|vpaid|prebid|preroll|midroll|postroll|ima|beacon|pixel|tracking|analytics|sponsor|promo)([\\/_\\-.?&=]|$)/i;
 
       function absoluteURL(value) {
         if (!value || typeof value !== "string") { return ""; }
         try { return new URL(value, location.href).href; } catch (_) { return value; }
       }
 
-      function isCandidate(value) {
-        const url = absoluteURL(value);
-        if (!url || ignoredPattern.test(url)) { return false; }
-        return videoPattern.test(url);
+      function isLikelyAd(url) {
+        try {
+          const parsed = new URL(url, location.href);
+          const host = parsed.hostname || "";
+          const path = `${parsed.pathname || ""}?${parsed.search || ""}`;
+          return adHostPattern.test(host) || adPathPattern.test(path);
+        } catch (_) {
+          return adPathPattern.test(url);
+        }
       }
 
-      function emit(value) {
+      function isCandidate(value, source, entry) {
         const url = absoluteURL(value);
-        if (!isCandidate(url) || url === lastURL) { return; }
+        if (!url || isLikelyAd(url) || !videoPattern.test(url)) { return false; }
+        if (source === "resource") {
+          const size = Number(entry && (entry.transferSize || entry.encodedBodySize || entry.decodedBodySize) || 0);
+          if (!/\\.(m3u8|mpd)(\\?|#|$)/i.test(url) && size > 0 && size < 524288) {
+            return false;
+          }
+        }
+        return true;
+      }
+
+      function cleanTitle() {
+        const raw = (document.title || "").replace(/\\s+/g, " ").trim();
+        if (raw) { return raw; }
+        try { return new URL(location.href).hostname || "Video"; } catch (_) { return "Video"; }
+      }
+
+      function removeKnownAdNodes() {
+        document.querySelectorAll("iframe, script, img, source").forEach(node => {
+          const url = node.src || node.href || "";
+          if (url && isLikelyAd(url)) {
+            node.remove();
+          }
+        });
+      }
+
+      function emit(value, source, entry) {
+        const url = absoluteURL(value);
+        if (!isCandidate(url, source, entry) || url === lastURL) { return; }
         lastURL = url;
-        window.webkit.messageHandlers.kdownloaderVideo.postMessage(url);
+        window.webkit.messageHandlers.kdownloaderVideo.postMessage({
+          url,
+          pageTitle: cleanTitle(),
+          pageURL: location.href,
+          source
+        });
       }
 
       function scanVideos() {
+        removeKnownAdNodes();
         document.querySelectorAll("video").forEach(video => {
-          emit(video.currentSrc || video.src);
-          video.querySelectorAll("source").forEach(source => emit(source.src));
+          emit(video.currentSrc || video.src, "video");
+          video.querySelectorAll("source").forEach(source => emit(source.src, "video-source"));
         });
         document.querySelectorAll("source, a").forEach(node => {
-          emit(node.src || node.href);
+          emit(node.src || node.href, "dom");
         });
         if (performance && performance.getEntriesByType) {
-          performance.getEntriesByType("resource").forEach(entry => emit(entry.name));
+          performance.getEntriesByType("resource").forEach(entry => emit(entry.name, "resource", entry));
         }
       }
 
@@ -267,5 +318,25 @@ private struct BrowserWebView: UIViewRepresentable {
       setInterval(scanVideos, 1200);
       scanVideos();
     })();
+    """
+
+    private static let contentBlockerRules = """
+    [
+      {"trigger":{"url-filter":".*doubleclick\\\\.net.*"},"action":{"type":"block"}},
+      {"trigger":{"url-filter":".*googlesyndication\\\\.com.*"},"action":{"type":"block"}},
+      {"trigger":{"url-filter":".*googleadservices\\\\.com.*"},"action":{"type":"block"}},
+      {"trigger":{"url-filter":".*adservice\\\\.google\\\\..*"},"action":{"type":"block"}},
+      {"trigger":{"url-filter":".*imasdk\\\\.googleapis\\\\.com.*"},"action":{"type":"block"}},
+      {"trigger":{"url-filter":".*adnxs\\\\.com.*"},"action":{"type":"block"}},
+      {"trigger":{"url-filter":".*adsrvr\\\\.org.*"},"action":{"type":"block"}},
+      {"trigger":{"url-filter":".*pubmatic\\\\.com.*"},"action":{"type":"block"}},
+      {"trigger":{"url-filter":".*rubiconproject\\\\.com.*"},"action":{"type":"block"}},
+      {"trigger":{"url-filter":".*openx\\\\.net.*"},"action":{"type":"block"}},
+      {"trigger":{"url-filter":".*criteo\\\\.com.*"},"action":{"type":"block"}},
+      {"trigger":{"url-filter":".*taboola\\\\.com.*"},"action":{"type":"block"}},
+      {"trigger":{"url-filter":".*outbrain\\\\.com.*"},"action":{"type":"block"}},
+      {"trigger":{"url-filter":".*scorecardresearch\\\\.com.*"},"action":{"type":"block"}},
+      {"trigger":{"url-filter":".*moatads\\\\.com.*"},"action":{"type":"block"}}
+    ]
     """
 }

@@ -17,10 +17,14 @@ struct DownloadTabView: View {
     let importedCookieFiles: [ImportedCookieFile]
 
     let isRunning: Bool
+    let isPaused: Bool
     let progressText: String
+    let downloadProgressItems: [DownloadProgressItem]
     let playlistProgress: PlaylistProgressSnapshot?
     let downloadErrorText: String?
     let onDownload: () -> Void
+    let onPause: () -> Void
+    let onResume: () -> Void
     let onCancel: () -> Void
     let onPastedURL: (String) -> Void
     let linkHistoryEnabled: Bool
@@ -82,25 +86,32 @@ struct DownloadTabView: View {
                 .padding(.horizontal, 20)
                 .padding(.top, 10)
 
-                if isRunning || shouldShowPlaylistProgress {
+                if isRunning || isPaused || shouldShowPlaylistProgress {
                     VStack(alignment: .leading, spacing: 8) {
                         if let playlistProgress, playlistProgress.isPlaylist {
                             playlistProgressCard(playlistProgress)
                         }
 
-                        if isRunning {
+                        if isRunning || isPaused {
                             HStack(spacing: 8) {
-                                ProgressView()
-                                Text("download.status.running")
+                                if isRunning {
+                                    ProgressView()
+                                }
+                                Text(isPaused ? "Paused" : String(localized: "download.status.running"))
                                     .font(.footnote)
                                     .foregroundStyle(primaryTextColor)
                             }
 
+                            if !downloadProgressItems.isEmpty {
+                                downloadProgressList
+                            }
+
                             Text(progressText)
-                                .font(.system(.footnote, design: .monospaced))
-                                .foregroundStyle(primaryTextColor)
-                                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-                                .padding(12)
+                                .font(.system(.caption, design: .monospaced))
+                                .foregroundStyle(downloadProgressItems.isEmpty ? primaryTextColor : .secondary)
+                                .lineLimit(downloadProgressItems.isEmpty ? nil : 2)
+                                .frame(maxWidth: .infinity, alignment: .topLeading)
+                                .padding(10)
                                 .background(cardElementBackground)
                                 .clipShape(RoundedRectangle(cornerRadius: 8))
                         }
@@ -139,11 +150,11 @@ struct DownloadTabView: View {
                         }
                     }
                     .pickerStyle(.segmented)
-                    .disabled(isRunning)
+                    .disabled(isRunning || isPaused)
 
                     VStack(spacing: 8) {
                         Button {
-                            guard !isRunning else { return }
+                            guard !(isRunning || isPaused) else { return }
                             withAnimation(.easeInOut(duration: 0.16)) {
                                 showDownloadOptions.toggle()
                             }
@@ -175,7 +186,7 @@ struct DownloadTabView: View {
                             .contentShape(Rectangle())
                         }
                         .buttonStyle(.plain)
-                        .disabled(isRunning)
+                        .disabled(isRunning || isPaused)
 
                         if showDownloadOptions {
                             VStack(spacing: 8) {
@@ -225,35 +236,73 @@ struct DownloadTabView: View {
                                 .clipShape(RoundedRectangle(cornerRadius: 6))
                         }
                         .buttonStyle(.plain)
-                        .disabled(isRunning)
+                        .disabled(isRunning || isPaused)
                     }
                     .padding(8)
                     .background(cardBackground)
                     .clipShape(RoundedRectangle(cornerRadius: 8))
 
-                    Button(action: {
-                        if isRunning {
-                            onCancel()
-                        } else {
+                    if isRunning {
+                        HStack(spacing: 8) {
+                            Button(action: onPause) {
+                                Label("Pause", systemImage: "pause.circle.fill")
+                                    .font(.headline)
+                                    .frame(maxWidth: .infinity)
+                                    .padding(.vertical, 10)
+                            }
+                            .buttonStyle(.borderedProminent)
+                            .tint(.orange)
+
+                            Button(action: onCancel) {
+                                Label(String(localized: "common.cancel"), systemImage: "stop.circle.fill")
+                                    .font(.headline)
+                                    .frame(maxWidth: .infinity)
+                                    .padding(.vertical, 10)
+                            }
+                            .buttonStyle(.borderedProminent)
+                            .tint(.red)
+                        }
+                    } else if isPaused {
+                        HStack(spacing: 8) {
+                            Button(action: onResume) {
+                                Label("Resume", systemImage: "play.circle.fill")
+                                    .font(.headline)
+                                    .frame(maxWidth: .infinity)
+                                    .padding(.vertical, 10)
+                            }
+                            .buttonStyle(.borderedProminent)
+                            .tint(.blue)
+
+                            Button(action: onCancel) {
+                                Label(String(localized: "common.cancel"), systemImage: "xmark.circle.fill")
+                                    .font(.headline)
+                                    .frame(maxWidth: .infinity)
+                                    .padding(.vertical, 10)
+                            }
+                            .buttonStyle(.bordered)
+                            .tint(.red)
+                        }
+                    } else {
+                        Button(action: {
                             if showDownloadOptions {
                                 withAnimation(.easeInOut(duration: 0.16)) {
                                     showDownloadOptions = false
                                 }
                             }
                             onDownload()
+                        }) {
+                            HStack(spacing: 8) {
+                                Image(systemName: "arrow.down.circle.fill")
+                                Text("tab.download")
+                            }
+                            .font(.headline)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 12)
                         }
-                    }) {
-                        HStack(spacing: 8) {
-                            Image(systemName: isRunning ? "stop.circle.fill" : "arrow.down.circle.fill")
-                            Text(isRunning ? "common.cancel" : "tab.download")
-                        }
-                        .font(.headline)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 12)
+                        .buttonStyle(.borderedProminent)
+                        .tint(.blue)
+                        .disabled(urlText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                     }
-                    .buttonStyle(.borderedProminent)
-                    .tint(isRunning ? .red : .blue)
-                    .disabled(!isRunning && urlText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                 }
                 .padding(12)
                 .background(cardBackground)
@@ -474,6 +523,151 @@ struct DownloadTabView: View {
             parts.append(String(localized: "download.options.cookies.title"))
         }
         return parts.isEmpty ? String(localized: "download.options.summary.default") : parts.joined(separator: " • ")
+    }
+
+    private var downloadProgressList: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 8) {
+                Image(systemName: "list.bullet.rectangle")
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(.blue)
+                Text("Download List")
+                    .font(.footnote.weight(.semibold))
+                    .foregroundStyle(primaryTextColor)
+                Spacer()
+                Text("\(downloadProgressItems.count)")
+                    .font(.caption2.weight(.bold))
+                    .foregroundStyle(.secondary)
+            }
+
+            ScrollView {
+                LazyVStack(spacing: 8) {
+                    ForEach(downloadProgressItems) { item in
+                        downloadProgressCard(item)
+                    }
+                }
+            }
+            .frame(maxHeight: 260)
+        }
+        .padding(12)
+        .background(cardElementBackground)
+        .clipShape(RoundedRectangle(cornerRadius: 8))
+    }
+
+    private func downloadProgressCard(_ item: DownloadProgressItem) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .top, spacing: 8) {
+                Image(systemName: progressIcon(for: item.state))
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(progressColor(for: item.state))
+                    .frame(width: 20)
+
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(item.fileName)
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(primaryTextColor)
+                        .lineLimit(2)
+                    Text(progressStatusText(for: item))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
+
+                Spacer(minLength: 8)
+
+                Text(progressPercentText(for: item))
+                    .font(.system(.caption, design: .monospaced).weight(.semibold))
+                    .foregroundStyle(primaryTextColor)
+            }
+
+            ProgressView(value: min(max(item.percent ?? 0, 0), 100), total: 100)
+                .tint(progressColor(for: item.state))
+
+            HStack(spacing: 8) {
+                progressMetric(title: "Size", value: item.sizeText ?? "-")
+                progressMetric(title: "Speed", value: item.speedText ?? "-")
+                progressMetric(title: "ETA", value: item.etaText ?? "-")
+            }
+        }
+        .padding(10)
+        .background(cardBackground)
+        .clipShape(RoundedRectangle(cornerRadius: 8))
+    }
+
+    private func progressMetric(title: String, value: String) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(title)
+                .font(.caption2.weight(.semibold))
+                .foregroundStyle(.secondary)
+            Text(value)
+                .font(.system(.caption, design: .monospaced).weight(.medium))
+                .foregroundStyle(primaryTextColor)
+                .lineLimit(1)
+                .minimumScaleFactor(0.75)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private func progressPercentText(for item: DownloadProgressItem) -> String {
+        guard let percent = item.percent else { return "-" }
+        return String(format: "%.1f%%", locale: .current, min(max(percent, 0), 100))
+    }
+
+    private func progressStatusText(for item: DownloadProgressItem) -> String {
+        switch item.state {
+        case .queued:
+            return "Queued"
+        case .running:
+            return "Downloading"
+        case .paused:
+            return "Paused"
+        case .processing:
+            return "Processing"
+        case .completed:
+            return "Completed"
+        case .failed:
+            return "Failed"
+        case .cancelled:
+            return "Cancelled"
+        }
+    }
+
+    private func progressIcon(for state: DownloadProgressItem.State) -> String {
+        switch state {
+        case .queued:
+            return "clock"
+        case .running:
+            return "arrow.down.circle.fill"
+        case .paused:
+            return "pause.circle.fill"
+        case .processing:
+            return "gearshape.fill"
+        case .completed:
+            return "checkmark.circle.fill"
+        case .failed:
+            return "xmark.octagon.fill"
+        case .cancelled:
+            return "stop.circle.fill"
+        }
+    }
+
+    private func progressColor(for state: DownloadProgressItem.State) -> Color {
+        switch state {
+        case .queued:
+            return .secondary
+        case .running:
+            return .blue
+        case .paused:
+            return .orange
+        case .processing:
+            return .orange
+        case .completed:
+            return .green
+        case .failed:
+            return .red
+        case .cancelled:
+            return .secondary
+        }
     }
 
     private func playlistProgressCard(_ snapshot: PlaylistProgressSnapshot) -> some View {

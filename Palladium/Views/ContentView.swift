@@ -79,6 +79,12 @@ struct ContentView: View {
     @State var statusText = "idle"
     @State var urlText: String
     @State var progressText = String(localized: "download.prompt.idle")
+    @State var downloadProgressItems: [DownloadProgressItem] = []
+    @State var activeDownloadProgressItemID: UUID?
+    @State var isDownloadPaused = false
+    @State var downloadPauseRequested = false
+    @State var activeDownloadContext: DownloadResumeContext?
+    @State var pausedDownloadContext: DownloadResumeContext?
     @State var playlistProgress: PlaylistProgressSnapshot?
     @State var downloadErrorText: String?
     @State var selectedPreset: DownloadPreset
@@ -190,7 +196,7 @@ struct ContentView: View {
             TabView(selection: $selectedTab) {
                 BrowserTabView(
                     isRunning: isRunning || isPackageRunning,
-                    onDownloadURL: { detectedURL in
+                    onDownloadURL: { detectedURL, titleHint in
                         let trimmedURL = detectedURL.trimmingCharacters(in: .whitespacesAndNewlines)
                         guard !trimmedURL.isEmpty else { return }
                         urlText = trimmedURL
@@ -200,7 +206,11 @@ struct ContentView: View {
                             return
                         }
                         appendConsoleText("[kdownloader] browser download started: \(trimmedURL)\n", source: .app)
-                        runDownloadFlow(urlOverride: trimmedURL, presetOverride: selectedPreset)
+                        runDownloadFlow(
+                            urlOverride: trimmedURL,
+                            presetOverride: selectedPreset,
+                            outputTitleHint: titleHint
+                        )
                     }
                 )
                 .tabItem {
@@ -221,10 +231,14 @@ struct ContentView: View {
                     selectedCookieFileName: $selectedCookieFileName,
                     importedCookieFiles: importedCookieFiles,
                     isRunning: isRunning,
+                    isPaused: isDownloadPaused,
                     progressText: progressText,
+                    downloadProgressItems: downloadProgressItems,
                     playlistProgress: playlistProgress,
                     downloadErrorText: downloadErrorText,
                     onDownload: { runDownloadFlow() },
+                    onPause: pauseDownloadFlow,
+                    onResume: resumeDownloadFlow,
                     onCancel: cancelDownloadFlow,
                     onPastedURL: handlePastedURL,
                     linkHistoryEnabled: linkHistoryEnabled,

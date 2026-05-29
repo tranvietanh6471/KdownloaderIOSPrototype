@@ -321,6 +321,31 @@ def extract_last_error_line(output):
     return lines[-1] if lines else None
 
 
+def sanitize_output_title_hint(value):
+    text = str(value or "").strip()
+    if not text:
+        return None
+
+    text = re.sub(r"\s+", " ", text)
+    text = re.sub(r"[\x00-\x1f/\\?%*:|\"<>]", " ", text)
+    text = re.sub(r"\.(m3u8|mpd|mp4|m4v|mov|webm|ts)$", "", text, flags=re.IGNORECASE)
+    text = re.sub(r"\s+", " ", text).strip(" ._-")
+    if not text:
+        return None
+
+    blocked_titles = {
+        "video",
+        "download",
+        "untitled",
+        "document",
+        "home",
+    }
+    if text.lower() in blocked_titles:
+        return None
+
+    return text[:160].strip(" ._-") or None
+
+
 def run_retry_without_thumbnails(
     retry_candidate,
     download_url,
@@ -347,8 +372,7 @@ def run_retry_without_thumbnails(
         "ejs:github",
         "--cache-dir",
         cache_dir if cache_dir else os.path.join(".", ".cache"),
-        "--force-overwrites",
-        "--no-continue",
+        "--continue",
         "-P",
         run_output_dir if run_output_dir else ".",
         *output_args,
@@ -380,6 +404,8 @@ def run_yt_dlp_flow(
     download_preset_override=None,
     preset_args_json_override=None,
     extra_args_override=None,
+    output_title_hint_override=None,
+    allow_resume_override=None,
     download_playlist_override=None,
     download_subtitles_override=None,
     embed_thumbnail_override=None,
@@ -416,6 +442,14 @@ def run_yt_dlp_flow(
         extra_args_text = os.environ.get("PALLADIUM_EXTRA_ARGS", "").strip()
     else:
         extra_args_text = str(extra_args_override).strip()
+    if output_title_hint_override is None:
+        output_title_hint = os.environ.get("KDOWNLOADER_OUTPUT_TITLE_HINT", "").strip()
+    else:
+        output_title_hint = str(output_title_hint_override).strip()
+    if allow_resume_override is None:
+        allow_resume = os.environ.get("KDOWNLOADER_ALLOW_RESUME", "").strip().lower() in ("1", "true", "yes", "on")
+    else:
+        allow_resume = bool(allow_resume_override)
     if download_playlist_override is None:
         download_playlist = os.environ.get("PALLADIUM_DOWNLOAD_PLAYLIST", "").strip().lower() in ("1", "true", "yes", "on")
     else:
@@ -562,8 +596,11 @@ def run_yt_dlp_flow(
                 if yt_exit_code != 1:
                     if run_output_dir:
                         os.chdir(run_output_dir)
-                    raise_if_cancel_requested(cancel_file_path, "[palladium] cancellation requested before download cleanup")
-                    cleanup_temp_download_files(run_output_dir)
+                    if allow_resume:
+                        print("[palladium] resume enabled: preserving partial download files")
+                    else:
+                        raise_if_cancel_requested(cancel_file_path, "[palladium] cancellation requested before download cleanup")
+                        cleanup_temp_download_files(run_output_dir)
 
                     if is_cancel_requested(cancel_file_path):
                         print("[palladium] cancellation requested before yt-dlp start")
@@ -590,9 +627,14 @@ def run_yt_dlp_flow(
                             print("[palladium] custom output template detected")
                         else:
                             if download_playlist:
-                                output_args = ["-o", "%(playlist_index)03d - %(title)s.%(ext)s"]
+                                output_args = ["-o", "%(playlist_index)03d - %(title).180B.%(ext)s"]
                             else:
-                                output_args = ["-o", "%(title)s.%(ext)s"]
+                                sanitized_title_hint = sanitize_output_title_hint(output_title_hint)
+                                if sanitized_title_hint:
+                                    print(f"[palladium] output title hint: {sanitized_title_hint}")
+                                    output_args = ["-o", f"{sanitized_title_hint}.%(ext)s"]
+                                else:
+                                    output_args = ["-o", "%(title).180B.%(ext)s"]
 
                         if not download_playlist:
                             download_behavior_args.append("--no-playlist")
@@ -622,8 +664,7 @@ def run_yt_dlp_flow(
                             "ejs:github",
                             "--cache-dir",
                             cache_dir if cache_dir else os.path.join(downloads_dir if downloads_dir else ".", ".cache"),
-                            "--force-overwrites",
-                            "--no-continue",
+                            *(["--continue"] if allow_resume else ["--force-overwrites", "--no-continue"]),
                             "-P",
                             run_output_dir if run_output_dir else ".",
                             *output_args,
