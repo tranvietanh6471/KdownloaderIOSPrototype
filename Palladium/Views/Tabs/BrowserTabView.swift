@@ -58,27 +58,48 @@ struct BrowserTabView: View {
                         controller.goBack()
                     } label: {
                         Image(systemName: "chevron.left")
+                            .font(.caption.weight(.semibold))
                     }
+                    .controlSize(.small)
                     .disabled(!controller.canGoBack)
 
                     Button {
                         controller.goForward()
                     } label: {
                         Image(systemName: "chevron.right")
+                            .font(.caption.weight(.semibold))
                     }
+                    .controlSize(.small)
                     .disabled(!controller.canGoForward)
                 }
 
                 ToolbarItem(placement: .principal) {
-                    TextField("Search or URL", text: $addressText)
-                        .textInputAutocapitalization(.never)
-                        .autocorrectionDisabled()
-                        .keyboardType(.URL)
-                        .textFieldStyle(.roundedBorder)
-                        .onSubmit {
-                            controller.load(addressText)
+                    HStack(spacing: 5) {
+                        TextField("Search or URL", text: $addressText)
+                            .textInputAutocapitalization(.never)
+                            .autocorrectionDisabled()
+                            .keyboardType(.URL)
+                            .font(.footnote)
+                            .onSubmit {
+                                controller.load(addressText)
+                            }
+
+                        if !addressText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                            Button {
+                                addressText = ""
+                            } label: {
+                                Image(systemName: "xmark.circle.fill")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityLabel("Clear URL")
                         }
-                        .frame(minWidth: 180, maxWidth: 420)
+                    }
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 5)
+                    .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 7))
+                    .frame(minWidth: 220, maxWidth: 520)
                 }
 
                 ToolbarItemGroup(placement: .topBarTrailing) {
@@ -86,13 +107,17 @@ struct BrowserTabView: View {
                         controller.reload()
                     } label: {
                         Image(systemName: "arrow.clockwise")
+                            .font(.caption.weight(.semibold))
                     }
+                    .controlSize(.small)
 
                     Button {
                         controller.load("https://www.google.com")
                     } label: {
                         Image(systemName: "house")
+                            .font(.caption.weight(.semibold))
                     }
+                    .controlSize(.small)
                 }
             }
         }

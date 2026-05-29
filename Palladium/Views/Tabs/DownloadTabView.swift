@@ -93,27 +93,21 @@ struct DownloadTabView: View {
                         }
 
                         if isRunning || isPaused {
-                            HStack(spacing: 8) {
-                                if isRunning {
-                                    ProgressView()
-                                }
-                                Text(isPaused ? "Paused" : String(localized: "download.status.running"))
-                                    .font(.footnote)
-                                    .foregroundStyle(primaryTextColor)
-                            }
+                            compactDownloadStatusBar
 
                             if !downloadProgressItems.isEmpty {
                                 downloadProgressList
                             }
 
-                            Text(progressText)
-                                .font(.system(.caption, design: .monospaced))
-                                .foregroundStyle(downloadProgressItems.isEmpty ? primaryTextColor : .secondary)
-                                .lineLimit(downloadProgressItems.isEmpty ? nil : 2)
-                                .frame(maxWidth: .infinity, alignment: .topLeading)
-                                .padding(10)
-                                .background(cardElementBackground)
-                                .clipShape(RoundedRectangle(cornerRadius: 8))
+                            if downloadProgressItems.isEmpty {
+                                Text(progressText)
+                                    .font(.system(.caption, design: .monospaced))
+                                    .foregroundStyle(primaryTextColor)
+                                    .frame(maxWidth: .infinity, alignment: .topLeading)
+                                    .padding(8)
+                                    .background(cardElementBackground)
+                                    .clipShape(RoundedRectangle(cornerRadius: 8))
+                            }
                         }
                     }
                     .padding(.horizontal, 20)
@@ -143,7 +137,8 @@ struct DownloadTabView: View {
                     .padding(.horizontal, 20)
                 }
 
-                VStack(spacing: 10) {
+                if !(isRunning || isPaused || !downloadProgressItems.isEmpty || shouldShowPlaylistProgress) {
+                    VStack(spacing: 10) {
                     Picker("download.preset.title", selection: $selectedPreset) {
                         ForEach(DownloadPreset.allCases) { preset in
                             Text(preset.title).tag(preset)
@@ -304,11 +299,12 @@ struct DownloadTabView: View {
                         .disabled(urlText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                     }
                 }
-                .padding(12)
-                .background(cardBackground)
-                .clipShape(RoundedRectangle(cornerRadius: 10))
-                .padding(.horizontal, 20)
-                .padding(.bottom, 8)
+                    .padding(12)
+                    .background(cardBackground)
+                    .clipShape(RoundedRectangle(cornerRadius: 10))
+                    .padding(.horizontal, 20)
+                    .padding(.bottom, 8)
+                }
             }
             .padding(.vertical, 14)
         }
@@ -332,6 +328,63 @@ struct DownloadTabView: View {
             return
         }
         urlText = ""
+    }
+
+    private var compactDownloadStatusBar: some View {
+        HStack(spacing: 8) {
+            if isRunning {
+                ProgressView()
+                    .controlSize(.small)
+            }
+
+            Text(isPaused ? "Paused" : String(localized: "download.status.running"))
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(primaryTextColor)
+
+            Spacer(minLength: 8)
+
+            if isRunning {
+                Button(action: onPause) {
+                    Image(systemName: "pause.fill")
+                        .font(.caption.weight(.bold))
+                        .frame(width: 28, height: 28)
+                }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.small)
+                .tint(.orange)
+
+                Button(action: onCancel) {
+                    Image(systemName: "xmark")
+                        .font(.caption.weight(.bold))
+                        .frame(width: 28, height: 28)
+                }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.small)
+                .tint(.red)
+            } else if isPaused {
+                Button(action: onResume) {
+                    Image(systemName: "play.fill")
+                        .font(.caption.weight(.bold))
+                        .frame(width: 28, height: 28)
+                }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.small)
+                .tint(.blue)
+
+                Button(action: onCancel) {
+                    Image(systemName: "xmark")
+                        .font(.caption.weight(.bold))
+                        .frame(width: 28, height: 28)
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+                .tint(.red)
+            }
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
+        .background(cardElementBackground)
+        .clipShape(RoundedRectangle(cornerRadius: 8))
     }
 
     private func downloadOptionToggle(
@@ -526,13 +579,13 @@ struct DownloadTabView: View {
     }
 
     private var downloadProgressList: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack(spacing: 8) {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 6) {
                 Image(systemName: "list.bullet.rectangle")
-                    .font(.system(size: 15, weight: .semibold))
+                    .font(.system(size: 13, weight: .semibold))
                     .foregroundStyle(.blue)
                 Text("Download List")
-                    .font(.footnote.weight(.semibold))
+                    .font(.caption.weight(.semibold))
                     .foregroundStyle(primaryTextColor)
                 Spacer()
                 Text("\(downloadProgressItems.count)")
@@ -541,55 +594,56 @@ struct DownloadTabView: View {
             }
 
             ScrollView {
-                LazyVStack(spacing: 8) {
+                LazyVStack(spacing: 6) {
                     ForEach(downloadProgressItems) { item in
                         downloadProgressCard(item)
                     }
                 }
             }
-            .frame(maxHeight: 260)
+            .frame(maxHeight: 340)
         }
-        .padding(12)
+        .padding(8)
         .background(cardElementBackground)
         .clipShape(RoundedRectangle(cornerRadius: 8))
     }
 
     private func downloadProgressCard(_ item: DownloadProgressItem) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack(alignment: .top, spacing: 8) {
+        VStack(alignment: .leading, spacing: 5) {
+            HStack(alignment: .top, spacing: 6) {
                 Image(systemName: progressIcon(for: item.state))
-                    .font(.system(size: 15, weight: .semibold))
+                    .font(.system(size: 13, weight: .semibold))
                     .foregroundStyle(progressColor(for: item.state))
-                    .frame(width: 20)
+                    .frame(width: 16)
 
-                VStack(alignment: .leading, spacing: 3) {
+                VStack(alignment: .leading, spacing: 1) {
                     Text(item.fileName)
-                        .font(.subheadline.weight(.semibold))
+                        .font(.caption.weight(.semibold))
                         .foregroundStyle(primaryTextColor)
-                        .lineLimit(2)
+                        .lineLimit(1)
                     Text(progressStatusText(for: item))
-                        .font(.caption)
+                        .font(.caption2)
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
                 }
 
-                Spacer(minLength: 8)
+                Spacer(minLength: 6)
 
                 Text(progressPercentText(for: item))
-                    .font(.system(.caption, design: .monospaced).weight(.semibold))
+                    .font(.system(.caption2, design: .monospaced).weight(.semibold))
                     .foregroundStyle(primaryTextColor)
             }
 
             ProgressView(value: min(max(item.percent ?? 0, 0), 100), total: 100)
                 .tint(progressColor(for: item.state))
+                .controlSize(.small)
 
-            HStack(spacing: 8) {
+            HStack(spacing: 6) {
                 progressMetric(title: "Size", value: item.sizeText ?? "-")
                 progressMetric(title: "Speed", value: item.speedText ?? "-")
                 progressMetric(title: "ETA", value: item.etaText ?? "-")
             }
         }
-        .padding(10)
+        .padding(7)
         .background(cardBackground)
         .clipShape(RoundedRectangle(cornerRadius: 8))
     }
@@ -600,7 +654,7 @@ struct DownloadTabView: View {
                 .font(.caption2.weight(.semibold))
                 .foregroundStyle(.secondary)
             Text(value)
-                .font(.system(.caption, design: .monospaced).weight(.medium))
+                .font(.system(.caption2, design: .monospaced).weight(.medium))
                 .foregroundStyle(primaryTextColor)
                 .lineLimit(1)
                 .minimumScaleFactor(0.75)
