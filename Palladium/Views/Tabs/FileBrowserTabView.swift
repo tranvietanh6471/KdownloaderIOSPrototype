@@ -1,6 +1,8 @@
 import SwiftUI
 import AVKit
 import QuickLook
+import Photos
+import UIKit
 
 struct FileBrowserTabView: View {
     @State private var rootURL: URL?
@@ -15,6 +17,7 @@ struct FileBrowserTabView: View {
     @State private var moveTarget: KdownloaderFileItem?
     @State private var playerURL: KdownloaderIdentifiedURL?
     @State private var previewURL: KdownloaderIdentifiedURL?
+    @State private var sharePayload: SharePayload?
 
     var body: some View {
         NavigationStack {
@@ -90,10 +93,30 @@ struct FileBrowserTabView: View {
                         .ignoresSafeArea()
                         .navigationTitle(item.url.lastPathComponent)
                         .navigationBarTitleDisplayMode(.inline)
+                        .toolbar {
+                            ToolbarItemGroup(placement: .topBarTrailing) {
+                                Button {
+                                    share(item.url)
+                                } label: {
+                                    Image(systemName: "square.and.arrow.up")
+                                }
+
+                                if canSaveToPhotos(item.url) {
+                                    Button {
+                                        saveFileToPhotos(item.url)
+                                    } label: {
+                                        Image(systemName: "photo.badge.plus")
+                                    }
+                                }
+                            }
+                        }
                 }
             }
             .sheet(item: $previewURL) { item in
                 QuickLookPreview(url: item.url)
+            }
+            .sheet(item: $sharePayload) { payload in
+                ShareSheet(activityItems: payload.activityItems)
             }
             .alert("Files", isPresented: $showAlert) {
                 Button("OK", role: .cancel) {}
@@ -104,60 +127,98 @@ struct FileBrowserTabView: View {
     }
 
     private func fileRow(_ item: KdownloaderFileItem) -> some View {
-        Button {
-            open(item)
-        } label: {
-            HStack(spacing: 12) {
-                Image(systemName: item.iconName)
-                    .font(.system(size: 22, weight: .semibold))
-                    .foregroundStyle(item.isDirectory ? .blue : .secondary)
-                    .frame(width: 30)
+        HStack(spacing: 8) {
+            Button {
+                open(item)
+            } label: {
+                HStack(spacing: 12) {
+                    Image(systemName: item.iconName)
+                        .font(.system(size: 22, weight: .semibold))
+                        .foregroundStyle(item.isDirectory ? .blue : .secondary)
+                        .frame(width: 30)
 
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(item.name)
-                        .font(.body.weight(.medium))
-                        .lineLimit(1)
-                    Text(item.detailText)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text(item.name)
+                            .font(.body.weight(.medium))
+                            .lineLimit(1)
+                        Text(item.detailText)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+
+                    Spacer()
+
+                    Image(systemName: item.isDirectory ? "chevron.right" : "play.circle")
+                        .foregroundStyle(.tertiary)
                 }
-
-                Spacer()
-
-                Image(systemName: item.isDirectory ? "chevron.right" : "play.circle")
-                    .foregroundStyle(.tertiary)
+                .contentShape(Rectangle())
             }
-            .contentShape(Rectangle())
+            .buttonStyle(.plain)
+
+            Menu {
+                fileActions(for: item)
+            } label: {
+                Image(systemName: "ellipsis.circle")
+                    .font(.system(size: 20, weight: .semibold))
+                    .foregroundStyle(.secondary)
+                    .frame(width: 36, height: 36)
+            }
         }
-        .buttonStyle(.plain)
         .contextMenu {
-            if !item.isDirectory, item.isPlayable {
-                Button {
-                    playerURL = KdownloaderIdentifiedURL(url: item.url)
-                } label: {
-                    Label("Play", systemImage: "play.circle")
-                }
-            }
+            fileActions(for: item)
+        }
+    }
 
+    @ViewBuilder
+    private func fileActions(for item: KdownloaderFileItem) -> some View {
+        if !item.isDirectory, item.isPlayable {
             Button {
-                renameText = item.name
-                renameTarget = item
+                playerURL = KdownloaderIdentifiedURL(url: item.url)
             } label: {
-                Label("Rename", systemImage: "pencil")
-            }
-
-            Button {
-                moveTarget = item
-            } label: {
-                Label("Move", systemImage: "folder")
-            }
-
-            Button(role: .destructive) {
-                delete(item)
-            } label: {
-                Label("Delete", systemImage: "trash")
+                Label("Play", systemImage: "play.circle")
             }
         }
+
+        Button {
+            share(item.url)
+        } label: {
+            Label("Share", systemImage: "square.and.arrow.up")
+        }
+
+        if !item.isDirectory, item.canSaveToPhotos {
+            Button {
+                saveFileToPhotos(item.url)
+            } label: {
+                Label("Save to Photos", systemImage: "photo.badge.plus")
+            }
+        }
+
+        Button {
+            renameText = item.name
+            renameTarget = item
+        } label: {
+            Label("Rename", systemImage: "pencil")
+        }
+
+        Button {
+            moveTarget = item
+        } label: {
+            Label("Move", systemImage: "folder")
+        }
+
+        Button(role: .destructive) {
+            delete(item)
+        } label: {
+            Label("Delete", systemImage: "trash")
+        }
+    }
+
+    private func share(_ url: URL) {
+        sharePayload = SharePayload(activityItems: [url])
+    }
+
+    private func canSaveToPhotos(_ url: URL) -> Bool {
+        KdownloaderFileItem(url: url).canSaveToPhotos
     }
 
     private var canOpenParent: Bool {
@@ -274,6 +335,30 @@ struct FileBrowserTabView: View {
         }
     }
 
+    private func saveFileToPhotos(_ url: URL) {
+        Task {
+            let permission = await PHPhotoLibrary.requestAuthorization(for: .addOnly)
+            guard permission == .authorized || permission == .limited else {
+                await presentMessage("Photo library permission was not granted.")
+                return
+            }
+
+            do {
+                try await PHPhotoLibrary.shared().performChanges {
+                    let item = KdownloaderFileItem(url: url)
+                    if item.isPhotoVideo {
+                        PHAssetChangeRequest.creationRequestForAssetFromVideo(atFileURL: url)
+                    } else if item.isPhotoImage {
+                        PHAssetChangeRequest.creationRequestForAssetFromImage(atFileURL: url)
+                    }
+                }
+                await presentMessage("Saved to Photos.")
+            } catch {
+                await presentMessage("Could not save to Photos: \(error.localizedDescription)")
+            }
+        }
+    }
+
     private func validatedFileName(_ rawName: String) throws -> String {
         let name = rawName.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !name.isEmpty, !name.contains("/"), !name.contains(":") else {
@@ -326,6 +411,12 @@ struct FileBrowserTabView: View {
         alertMessage = error.localizedDescription
         showAlert = true
     }
+
+    @MainActor
+    private func presentMessage(_ message: String) {
+        alertMessage = message
+        showAlert = true
+    }
 }
 
 struct KdownloaderFileItem: Identifiable {
@@ -362,6 +453,20 @@ struct KdownloaderFileItem: Identifiable {
     var isPlayable: Bool {
         let playableExtensions: Set<String> = ["mp4", "mov", "m4v", "mp3", "m4a", "aac", "wav", "webm", "mkv"]
         return playableExtensions.contains(url.pathExtension.lowercased())
+    }
+
+    var isPhotoImage: Bool {
+        let imageExtensions: Set<String> = ["jpg", "jpeg", "png", "gif", "heif", "heic"]
+        return imageExtensions.contains(url.pathExtension.lowercased())
+    }
+
+    var isPhotoVideo: Bool {
+        let videoExtensions: Set<String> = ["mp4", "mov", "m4v"]
+        return videoExtensions.contains(url.pathExtension.lowercased())
+    }
+
+    var canSaveToPhotos: Bool {
+        !isDirectory && (isPhotoImage || isPhotoVideo)
     }
 }
 
