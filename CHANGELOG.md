@@ -1,5 +1,10 @@
 # Palladium Changelog
 
+## v1.0.6
+
+- Fixed supported-site detection in Browser by sending page URLs directly from the WebView detector.
+- Force-upgrades old yt-dlp installs to at least 2026.03.17 to reduce YouTube 403 failures.
+
 ## v1.0.5
 
 - Added site resolvers for KUBHD and Anime108 pages.

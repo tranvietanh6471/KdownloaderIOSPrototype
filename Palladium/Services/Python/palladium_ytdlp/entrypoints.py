@@ -38,6 +38,7 @@ from .shared import TRACKED_PACKAGES, TailBuffer, Tee, open_live_log_stream
 from .webkit_jsi import ensure_safe_webkit_jsi_runtime
 
 PLAYLIST_PROGRESS_PREFIX = "[palladium][playlist-progress] "
+MIN_YTDLP_VERSION = "2026.03.17"
 DEFAULT_BROWSER_USER_AGENT = (
     "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) "
     "AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 "
@@ -47,6 +48,12 @@ XHAMSTER_PAGE_HOSTS = (
     "xhamster.com",
     "xhamster.desi",
     "xhamster.xxx",
+)
+YOUTUBE_HOSTS = (
+    "youtube.com",
+    "m.youtube.com",
+    "music.youtube.com",
+    "youtu.be",
 )
 GENZ3X_PAGE_HOSTS = (
     "genz3x.com",
@@ -474,6 +481,13 @@ def is_xhamster_page_url(value):
     return any(host == domain or host.endswith(f".{domain}") for domain in XHAMSTER_PAGE_HOSTS)
 
 
+def is_youtube_url(value):
+    host = normalized_url_host(value)
+    if not host:
+        return False
+    return any(host == domain or host.endswith(f".{domain}") for domain in YOUTUBE_HOSTS)
+
+
 def is_genz3x_page_url(value):
     host = normalized_url_host(value)
     if not host:
@@ -536,6 +550,11 @@ def argv_contains_option(args, option):
         if text == option or text.startswith(f"{option}="):
             return True
     return False
+
+
+def argv_contains_text(args, needle):
+    needle_text = str(needle)
+    return any(needle_text in str(arg) for arg in args)
 
 
 def fetch_site_text(url, referer=None):
@@ -994,6 +1013,12 @@ def resolve_anime108_download_url(download_url):
 
 
 def build_site_specific_download_args(download_url, existing_args):
+    if is_youtube_url(download_url):
+        args = []
+        if not argv_contains_text(existing_args, "youtube:player_client"):
+            args.extend(["--extractor-args", "youtube:player_client=android,web"])
+        return args, "youtube" if args else None
+
     if not is_xhamster_page_url(download_url):
         return [], None
 
@@ -1021,6 +1046,29 @@ def curl_cffi_supported_version(curl_cffi_module):
     except Exception:
         return False
     return version == (0, 5, 10) or (0, 10) <= version < (0, 15)
+
+
+def version_tuple(value):
+    parts = []
+    for piece in re.split(r"[^\d]+", str(value or "")):
+        if not piece:
+            continue
+        try:
+            parts.append(int(piece))
+        except Exception:
+            break
+        if len(parts) >= 4:
+            break
+    return tuple(parts)
+
+
+def package_version_at_least(current, minimum):
+    current_tuple = version_tuple(current)
+    minimum_tuple = version_tuple(minimum)
+    if not current_tuple or not minimum_tuple:
+        return False
+    width = max(len(current_tuple), len(minimum_tuple))
+    return current_tuple + (0,) * (width - len(current_tuple)) >= minimum_tuple + (0,) * (width - len(minimum_tuple))
 
 
 def ensure_curl_cffi_if_needed(pip_main, install_target, extra_args_text, download_url=None):
@@ -1212,6 +1260,12 @@ def run_yt_dlp_flow(
             )
             if yt_dlp_installed:
                 print(f"[palladium] yt-dlp already installed ({yt_dlp_version} via {yt_dlp_source})")
+                if not package_version_at_least(yt_dlp_version, MIN_YTDLP_VERSION):
+                    needs_yt_dlp_install = True
+                    print(
+                        "[palladium] yt-dlp version below supported minimum: "
+                        f"{yt_dlp_version} < {MIN_YTDLP_VERSION}"
+                    )
             else:
                 needs_yt_dlp_install = True
                 print("[palladium] yt-dlp package missing")
@@ -1234,13 +1288,16 @@ def run_yt_dlp_flow(
                 if pip_main is not None:
                     packages = []
                     if needs_yt_dlp_install:
-                        packages.append("yt-dlp")
+                        packages.append(f"yt-dlp>={MIN_YTDLP_VERSION}")
+                        removed = cleanup_target_package(install_target, "yt-dlp")
+                        if removed:
+                            print(f"[palladium] removed stale yt-dlp target entries: {removed}")
                     if needs_webkit_jsi_install:
                         packages.append("yt-dlp-apple-webkit-jsi")
 
                     try:
                         raise_if_cancel_requested(cancel_file_path, "[palladium] cancellation requested before pip install")
-                        pip_args = ["install", "--no-cache-dir", "--progress-bar", "off", "--no-color", *packages]
+                        pip_args = ["install", "--upgrade", "--no-cache-dir", "--progress-bar", "off", "--no-color", *packages]
                         if install_target:
                             pip_args[1:1] = ["--target", install_target]
                         pip_args[1:1] = ["--disable-pip-version-check"]

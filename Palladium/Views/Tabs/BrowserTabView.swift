@@ -586,6 +586,44 @@ private struct BrowserWebView: UIViewRepresentable {
         try { return new URL(location.href).hostname || "Video"; } catch (_) { return "Video"; }
       }
 
+      function supportedPageLabel(url) {
+        try {
+          const parsed = new URL(url, location.href);
+          const host = (parsed.hostname || "").replace(/^www\\./i, "").toLowerCase();
+          const path = parsed.pathname || "";
+          const parts = path.split("/").filter(Boolean);
+          if (host === "youtu.be" && parts.length >= 1) { return "YouTube page"; }
+          if ((host === "youtube.com" || host === "m.youtube.com" || host === "music.youtube.com")
+            && ((parts[0] === "watch" && parsed.searchParams.get("v")) || ["shorts", "live", "embed"].includes(parts[0]))) {
+            return "YouTube page";
+          }
+          if ((host === "xhamster.com" || host.endsWith(".xhamster.com") || host === "xhamster.desi" || host.endsWith(".xhamster.desi") || host === "xhamster.xxx" || host.endsWith(".xhamster.xxx"))
+            && path.toLowerCase().includes("/videos/")) { return "xHamster page"; }
+          if ((host === "genz3x.com" || host.endsWith(".genz3x.com") || host === "clipphimsex3x.net" || host.endsWith(".clipphimsex3x.net") || host === "clipsexsub3x.net" || host.endsWith(".clipsexsub3x.net"))
+            && /^\\/.+\\/\\d+\\/?$/i.test(path)) { return "Genz3X page"; }
+          if ((host === "sextop1.cl" || host.endsWith(".sextop1.cl")) && parts.length === 1) { return "Sextop1 page"; }
+          if ((host === "avple.tv" || host.endsWith(".avple.tv")) && parts.length === 2 && parts[0] === "video") { return "Avple page"; }
+          if ((host === "kubhd24.net" || host.endsWith(".kubhd24.net")) && parts.length >= 2 && (parts[0] === "movie" || parts[0] === "series")) { return "KUBHD page"; }
+          if ((host === "anime108.com" || host.endsWith(".anime108.com")) && parts.length === 1 && !["the-movie", "top-imdb", "fillter-year", "author", "category", "tag", "page"].includes(parts[0])) { return "Anime108 page"; }
+          if (host === "main.108player.com" || host.endsWith(".main.108player.com")) { return "Anime108 player"; }
+        } catch (_) {}
+        return "";
+      }
+
+      function emitSupportedPageURL() {
+        const pageURL = location.href;
+        const label = supportedPageLabel(pageURL);
+        if (!label || pageURL === lastURL) { return; }
+        lastURL = pageURL;
+        window.webkit.messageHandlers.kdownloaderVideo.postMessage({
+          url: pageURL,
+          pageTitle: cleanTitle(),
+          pageURL: pageURL,
+          source: "page",
+          score: 120
+        });
+      }
+
       function removeKnownAdNodes() {
         document.querySelectorAll("iframe, script, img, source").forEach(node => {
           const url = node.src || node.href || "";
@@ -650,6 +688,7 @@ private struct BrowserWebView: UIViewRepresentable {
       }
 
       function scanVideos() {
+        emitSupportedPageURL();
         removeKnownAdNodes();
         document.querySelectorAll("video").forEach(video => {
           emit(video.currentSrc || video.src, "video", null, video);
