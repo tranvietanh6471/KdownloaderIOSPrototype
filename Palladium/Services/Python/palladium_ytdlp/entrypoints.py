@@ -62,6 +62,7 @@ GENZ3X_PAGE_HOSTS = (
 )
 GENZ3X_PLAYER_HOSTS = (
     "play2.cdn-xvideos-xnxx.xyz",
+    "xcdnx.cdn-xvideos-xnxx.xyz",
 )
 SEXTOP1_PAGE_HOSTS = (
     "sextop1.cl",
@@ -646,6 +647,20 @@ def extract_first_m3u8_url(player_html):
     return first_matching_url(matches)
 
 
+def extract_first_media_url(player_html):
+    normalized_html = str(player_html or "").replace("\\/", "/")
+    patterns = [
+        r'https?://[^"\'<>\s]+?\.m3u8(?:\?[^"\'<>\s]+)?',
+        r'https?://[^"\'<>\s]+?\.mp4(?:\?[^"\'<>\s]+)?',
+        r'["\']file["\']\s*:\s*["\']([^"\']+)["\']',
+        r'file\s*:\s*["\']([^"\']+)["\']',
+    ]
+    candidates = []
+    for pattern in patterns:
+        candidates.extend(re.findall(pattern, normalized_html, flags=re.IGNORECASE))
+    return first_matching_url(candidates)
+
+
 def resolve_genz3x_download_url(download_url):
     if not (is_genz3x_page_url(download_url) or is_genz3x_player_url(download_url)):
         return download_url, [], None
@@ -657,17 +672,17 @@ def resolve_genz3x_download_url(download_url):
         else:
             print("[palladium] site profile resolving: genz3x page")
             page_url = download_url
-            page_html = fetch_site_text(page_url)
+            page_html = fetch_site_text_impersonated(page_url)
             embed_url = extract_genz3x_embed_url(page_html, page_url)
             if not embed_url:
                 print("[palladium] genz3x resolver: no embed iframe found")
                 return download_url, [], "genz3x"
 
         print(f"[palladium] genz3x resolver iframe: {embed_url}")
-        player_html = fetch_site_text(embed_url, referer=page_url)
-        media_url = extract_first_m3u8_url(player_html)
+        player_html = fetch_site_text_impersonated(embed_url, referer=page_url)
+        media_url = extract_first_media_url(player_html)
         if not media_url:
-            print("[palladium] genz3x resolver: no m3u8 found in iframe")
+            print("[palladium] genz3x resolver: no media URL found in iframe")
             return download_url, [], "genz3x"
 
         print(f"[palladium] genz3x resolver media: {media_url}")
@@ -1036,6 +1051,8 @@ def requires_impersonation_support(extra_args_text, download_url):
     return (
         has_generic_impersonation_arg(extra_args_text)
         or is_xhamster_page_url(download_url)
+        or is_genz3x_page_url(download_url)
+        or is_genz3x_player_url(download_url)
         or is_avple_page_url(download_url)
     )
 
@@ -1085,6 +1102,8 @@ def ensure_curl_cffi_if_needed(pip_main, install_target, extra_args_text, downlo
 
     if is_xhamster_page_url(download_url):
         print("[palladium] site profile enabled: xhamster browser impersonation")
+    elif is_genz3x_page_url(download_url) or is_genz3x_player_url(download_url):
+        print("[palladium] site profile enabled: genz3x browser impersonation")
     elif is_avple_page_url(download_url):
         print("[palladium] site profile enabled: avple browser impersonation")
     elif has_generic_impersonation_arg(extra_args_text):

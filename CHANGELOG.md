@@ -1,5 +1,9 @@
 # Palladium Changelog
 
+## v1.0.8
+
+- Fixed current Genz3X/ClipSexSub3X player support by using browser impersonation and extracting JWPlayer MP4 sources.
+
 ## v1.0.7
 
 - Cleans up stale curl_cffi installs and unloads old modules before reinstalling Cloudflare impersonation support.
