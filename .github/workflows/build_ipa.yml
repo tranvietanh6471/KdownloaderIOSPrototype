@@ -120,6 +120,17 @@ jobs:
     - name: Make script executable
       run: chmod +x build_ipa.sh
 
+    - name: Resolve build name
+      id: build_name
+      run: |
+        set -euo pipefail
+        BUILD_REF=$(git tag --points-at HEAD --sort=-v:refname | head -n 1)
+        if [ -z "$BUILD_REF" ]; then
+          BUILD_REF=$(git rev-parse --short HEAD)
+        fi
+        echo "build_ref=${BUILD_REF}" >> "$GITHUB_OUTPUT"
+        echo "Build ref: ${BUILD_REF}"
+
     - name: Build IPA
       env:
         PALLADIUM_DISABLE_PYTHON_DYLIB_CODESIGN: "1"
@@ -137,12 +148,12 @@ jobs:
     - name: Upload IPA artifact
       uses: actions/upload-artifact@v4
       with:
-        name: Kdownloader
+        name: Kdownloader-${{ steps.build_name.outputs.build_ref }}
         path: build/*.ipa
 
     - name: Upload build log
       if: always()
       uses: actions/upload-artifact@v4
       with:
-        name: Kdownloader-build-log
+        name: Kdownloader-${{ steps.build_name.outputs.build_ref }}-build-log
         path: build.log
