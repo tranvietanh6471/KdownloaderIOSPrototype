@@ -116,10 +116,14 @@ extension ContentView {
     func performPromptedPostDownloadAction(_ action: PostDownloadAction) {
         guard let result = completedDownloadResult else {
             showDownloadActionSheet = false
+            startNextQueuedDownloadIfPossible()
             return
         }
         showDownloadActionSheet = false
         handlePostDownloadAction(action, for: result)
+        if action != .saveToPhotos {
+            startNextQueuedDownloadIfPossible()
+        }
     }
 
     var completedResultDisplayTitle: String? {
@@ -175,6 +179,7 @@ extension ContentView {
         showDownloadActionSheet = false
         completedDownloadResult = nil
         completedPhotosCompatibility = .checking
+        startNextQueuedDownloadIfPossible()
     }
 
     func saveDownloadedFileToPhotos(_ url: URL) {
@@ -218,7 +223,10 @@ extension ContentView {
                     reopenDownloadActionAfterAlert = false
                     alertMessage = nil
                     showAlert = false
+                    completedDownloadResult = nil
+                    completedPhotosCompatibility = .checking
                     showTemporaryToast(String(localized: "photos.toast.saved"))
+                    startNextQueuedDownloadIfPossible()
                 }
             } catch {
                 await MainActor.run {

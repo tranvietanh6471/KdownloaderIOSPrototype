@@ -86,7 +86,7 @@ struct DownloadTabView: View {
                 .padding(.horizontal, 20)
                 .padding(.top, 10)
 
-                if isRunning || isPaused || shouldShowPlaylistProgress {
+                if isRunning || isPaused || !downloadProgressItems.isEmpty || shouldShowPlaylistProgress {
                     VStack(alignment: .leading, spacing: 8) {
                         if let playlistProgress, playlistProgress.isPlaylist {
                             playlistProgressCard(playlistProgress)
@@ -94,11 +94,13 @@ struct DownloadTabView: View {
 
                         if isRunning || isPaused {
                             compactDownloadStatusBar
+                        }
 
-                            if !downloadProgressItems.isEmpty {
-                                downloadProgressList
-                            }
+                        if !downloadProgressItems.isEmpty {
+                            downloadProgressList
+                        }
 
+                        if isRunning || isPaused {
                             if downloadProgressItems.isEmpty {
                                 Text(progressText)
                                     .font(.system(.caption, design: .monospaced))

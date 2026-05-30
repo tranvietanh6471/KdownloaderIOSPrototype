@@ -8,6 +8,7 @@ struct UseInterfaceSettingsView: View {
     @Binding var rememberSelectedPreset: Bool
     @Binding var autoDownloadOnPaste: Bool
     @Binding var autoRetryFailedDownloads: Bool
+    @Binding var downloadSpeedMode: DownloadSpeedMode
     @Binding var detailedProgressEnabled: Bool
     @Binding var shareSheetDownloadMode: ShareSheetDownloadMode
     @Binding var linkHistoryEnabled: Bool
@@ -27,6 +28,7 @@ struct UseInterfaceSettingsView: View {
         rememberSelectedPreset: Binding<Bool>,
         autoDownloadOnPaste: Binding<Bool>,
         autoRetryFailedDownloads: Binding<Bool>,
+        downloadSpeedMode: Binding<DownloadSpeedMode>,
         detailedProgressEnabled: Binding<Bool>,
         shareSheetDownloadMode: Binding<ShareSheetDownloadMode>,
         linkHistoryEnabled: Binding<Bool>,
@@ -41,6 +43,7 @@ struct UseInterfaceSettingsView: View {
         _rememberSelectedPreset = rememberSelectedPreset
         _autoDownloadOnPaste = autoDownloadOnPaste
         _autoRetryFailedDownloads = autoRetryFailedDownloads
+        _downloadSpeedMode = downloadSpeedMode
         _detailedProgressEnabled = detailedProgressEnabled
         _shareSheetDownloadMode = shareSheetDownloadMode
         _linkHistoryEnabled = linkHistoryEnabled
@@ -115,6 +118,14 @@ struct UseInterfaceSettingsView: View {
             }
 
             Section {
+                Picker("Download speed", selection: $downloadSpeedMode) {
+                    ForEach(DownloadSpeedMode.allCases) { mode in
+                        Text(mode.title).tag(mode)
+                    }
+                }
+                .pickerStyle(.menu)
+                .disabled(isRunning)
+
                 Toggle("settings.ui.retry_failed.toggle", isOn: $autoRetryFailedDownloads)
                     .disabled(isRunning)
 
@@ -124,6 +135,7 @@ struct UseInterfaceSettingsView: View {
                 Text("settings.ui.progress.section")
             } footer: {
                 VStack(alignment: .leading, spacing: 6) {
+                    Text(downloadSpeedMode.helpText)
                     Text("settings.ui.retry_failed.help")
                     Text("settings.ui.progress.help")
                 }

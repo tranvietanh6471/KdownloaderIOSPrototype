@@ -125,11 +125,82 @@ extension ContentView {
     func handlePastedURL(_ pastedURL: String) {
         guard autoDownloadOnPaste else { return }
         if isRunning {
-            appendConsoleText("[palladium] paste detected while download is already running\n")
+            appendConsoleText("[palladium] paste detected while download is already running; queued\n")
+            enqueueDownloadRequest(
+                url: pastedURL,
+                preset: selectedPreset,
+                afterDownloadBehavior: afterDownloadBehavior,
+                outputTitleHint: nil
+            )
             return
         }
         appendConsoleText("[palladium] auto download started from pasted url\n")
         runDownloadFlow(urlOverride: pastedURL, presetOverride: selectedPreset)
+    }
+
+    func enqueueDownloadRequest(
+        url: String,
+        preset: DownloadPreset,
+        afterDownloadBehavior: AfterDownloadBehavior,
+        outputTitleHint: String?
+    ) {
+        let trimmedURL = url.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedURL.isEmpty else { return }
+
+        let progressItemID = UUID()
+        let displayName = queuedDownloadDisplayName(url: trimmedURL, titleHint: outputTitleHint)
+        queuedDownloadRequests.append(
+            QueuedDownloadRequest(
+                progressItemID: progressItemID,
+                url: trimmedURL,
+                preset: preset,
+                afterDownloadBehavior: afterDownloadBehavior,
+                outputTitleHint: outputTitleHint
+            )
+        )
+        downloadProgressItems.append(
+            DownloadProgressItem(
+                id: progressItemID,
+                fileName: displayName,
+                detailText: "Waiting",
+                state: .queued
+            )
+        )
+        selectedTab = .download
+        statusText = isRunning ? "running" : "queued"
+        progressText = "Queued \(queuedDownloadRequests.count) download(s)"
+        appendConsoleText("[palladium] queued download: \(trimmedURL)\n")
+        persistDownloadSessionState()
+        startNextQueuedDownloadIfPossible()
+    }
+
+    func startNextQueuedDownloadIfPossible() {
+        guard !isRunning, !isPackageRunning, !isDownloadPaused else { return }
+        guard !showDownloadActionSheet, !showAlert, !reopenDownloadActionAfterAlert else { return }
+        guard !queuedDownloadRequests.isEmpty else { return }
+        let next = queuedDownloadRequests.removeFirst()
+        appendConsoleText("[palladium] starting queued download: \(next.url)\n")
+        runDownloadFlow(
+            urlOverride: next.url,
+            presetOverride: next.preset,
+            afterDownloadOverride: next.afterDownloadBehavior,
+            outputTitleHint: next.outputTitleHint,
+            queuedProgressItemID: next.progressItemID
+        )
+    }
+
+    private func queuedDownloadDisplayName(url: String, titleHint: String?) -> String {
+        if let titleHint {
+            let trimmedTitle = titleHint.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !trimmedTitle.isEmpty {
+                return trimmedTitle
+            }
+        }
+        guard let parsedURL = URL(string: url) else { return url }
+        if !parsedURL.lastPathComponent.isEmpty {
+            return parsedURL.lastPathComponent
+        }
+        return parsedURL.host ?? url
     }
 
     func runDownloadFlow(
@@ -137,32 +208,38 @@ extension ContentView {
         presetOverride: DownloadPreset? = nil,
         afterDownloadOverride: AfterDownloadBehavior? = nil,
         outputTitleHint: String? = nil,
-        resumeContext: DownloadResumeContext? = nil
+        resumeContext: DownloadResumeContext? = nil,
+        queuedProgressItemID: UUID? = nil
     ) {
-        guard !isRunning, !isPackageRunning else { return }
-        if isDownloadPaused, resumeContext == nil {
-            appendConsoleText("[palladium] download is paused; resume or cancel it before starting another download\n")
-            selectedTab = .download
-            return
-        }
         let targetURL = (resumeContext?.url ?? urlOverride ?? urlText).trimmingCharacters(in: .whitespacesAndNewlines)
         guard !targetURL.isEmpty else { return }
         let isResumeRun = resumeContext != nil
+        let isQueuedRun = queuedProgressItemID != nil
+        if (isRunning || isPackageRunning || isDownloadPaused), !isResumeRun, !isQueuedRun {
+            enqueueDownloadRequest(
+                url: targetURL,
+                preset: presetOverride ?? selectedPreset,
+                afterDownloadBehavior: afterDownloadOverride ?? afterDownloadBehavior,
+                outputTitleHint: outputTitleHint
+            )
+            return
+        }
+        guard !isRunning, !isPackageRunning else { return }
 
-        if !isResumeRun {
+        if !isResumeRun && !isQueuedRun {
             consoleLogStore.clearAll()
         }
         downloadErrorText = nil
         completedDownloadResult = nil
         playlistProgress = nil
-        if !isResumeRun {
+        if !isResumeRun && !isQueuedRun {
             downloadProgressItems = []
             activeDownloadProgressItemID = nil
             pausedDownloadContext = nil
         }
         isDownloadPaused = false
 
-        if !isResumeRun {
+        if !isResumeRun && !isQueuedRun {
             do {
                 let removedCount = try clearDownloadsDirectoryContents()
                 appendConsoleText("[palladium] cleared downloads folder entries: \(removedCount)\n")
@@ -208,7 +285,10 @@ extension ContentView {
         let extraArgsAtStart = extraArgsText.trimmingCharacters(in: .whitespacesAndNewlines)
         let outputTitleHintAtStart = (resumeContext?.outputTitleHint ?? outputTitleHint)?.trimmingCharacters(in: .whitespacesAndNewlines)
         let presetArgsJSONAtStart = buildPresetArgumentsJSON()
-        let afterDownloadBehaviorAtStart = resumeContext?.afterDownloadBehavior ?? afterDownloadOverride ?? afterDownloadBehavior
+        let selectedAfterDownloadBehavior = resumeContext?.afterDownloadBehavior ?? afterDownloadOverride ?? afterDownloadBehavior
+        let afterDownloadBehaviorAtStart: AfterDownloadBehavior = isQueuedRun && selectedAfterDownloadBehavior == .ask
+            ? .saveToApplicationFolder
+            : selectedAfterDownloadBehavior
         activeDownloadContext = DownloadResumeContext(
             url: targetURL,
             preset: presetAtStartValue,
@@ -216,11 +296,21 @@ extension ContentView {
             outputTitleHint: outputTitleHintAtStart,
             runOutputURL: runOutputURL
         )
+        persistDownloadSessionState()
+        if let queuedProgressItemID {
+            activeDownloadProgressItemID = queuedProgressItemID
+            updateDownloadProgressItem(id: queuedProgressItemID) { item in
+                item.state = .running
+                item.detailText = String(localized: "download.status.running")
+            }
+            persistDownloadSessionState()
+        }
         let linkHistoryEnabledAtStart = linkHistoryEnabled
         let downloadPlaylistAtStart = downloadPlaylist
         let downloadSubtitlesAtStart = downloadSubtitles
         let embedThumbnailAtStart = embedThumbnail
         let autoRetryFailedDownloadsAtStart = autoRetryFailedDownloads
+        let downloadSpeedModeAtStart = downloadSpeedMode
         let subtitleLanguagePatternAtStart = resolvedSubtitleLanguagePattern
         let useCookiesAtStart = useCookies
         let cookieFilePathAtStart = useCookiesAtStart ? resolvedSelectedCookieFilePath() : nil
@@ -244,9 +334,17 @@ extension ContentView {
 
         var backgroundTaskID = UIBackgroundTaskIdentifier.invalid
         backgroundTaskID = UIApplication.shared.beginBackgroundTask(withName: "Palladium download") {
-            PythonFlowRunner.interruptActiveFlow()
             Task { @MainActor in
-                appendConsoleText("[palladium] background time expired; stopping download\n")
+                appendConsoleText("[palladium] background time expired; pausing download for resume\n")
+                downloadPauseRequested = true
+                downloadCancelRequested = false
+                progressText = "Pausing for background resume..."
+                statusText = "pausing"
+                requestActiveOperationCancellation()
+                currentDownloadTask?.cancel()
+                pendingDownloadProgressLine = ""
+                ffmpegProgressDurationSeconds = nil
+                isInstallingPackagesDuringDownload = false
                 if backgroundTaskID != .invalid {
                     UIApplication.shared.endBackgroundTask(backgroundTaskID)
                     backgroundTaskID = .invalid
@@ -269,6 +367,8 @@ extension ContentView {
                 downloadSubtitles: downloadSubtitlesAtStart,
                 embedThumbnail: embedThumbnailAtStart,
                 autoRetryFailedDownloads: autoRetryFailedDownloadsAtStart,
+                concurrentFragments: downloadSpeedModeAtStart.fragmentCount,
+                httpChunkSize: downloadSpeedModeAtStart.httpChunkSize,
                 subtitleLanguagePattern: subtitleLanguagePatternAtStart,
                 cookieFilePath: cookieFilePathAtStart,
                 runOutputDir: runOutputURL.path,
@@ -331,6 +431,7 @@ extension ContentView {
                 completedDownloadResult = nil
                 completedPhotosCompatibility = .checking
                 reopenDownloadActionAfterAlert = false
+                persistDownloadSessionState()
                 return
             } else if finalResultKind == "cancelled" {
                 progressText = String(localized: "download.status.cancelled")
@@ -341,9 +442,11 @@ extension ContentView {
                 completedDownloadResult = nil
                 completedPhotosCompatibility = .checking
                 reopenDownloadActionAfterAlert = false
+                persistDownloadSessionState()
             } else if finalResultKind == "partial" {
                 progressText = String(localized: "download.status.partial")
                 markUnfinishedDownloadProgressItems(.failed)
+                persistDownloadSessionState()
             } else {
                 progressText = finalResultKind == "success"
                     ? String(localized: "download.status.complete")
@@ -355,6 +458,7 @@ extension ContentView {
                 } else {
                     markUnfinishedDownloadProgressItems(.failed)
                 }
+                persistDownloadSessionState()
             }
             if finalResultKind == "error" {
                 downloadErrorText = downloadErrorDetails(from: outcome)
@@ -417,6 +521,7 @@ extension ContentView {
             } else if finalResultKind == "success" || finalResultKind == "partial" {
                 downloadErrorText = String(localized: "download.error.no_files_found")
             }
+            startNextQueuedDownloadIfPossible()
         }
         currentDownloadTask = task
     }
@@ -455,9 +560,13 @@ extension ContentView {
         selectedPreset = preset
 
         if isRunning || isPackageRunning {
-            appendConsoleText("[palladium] shortcut request received while another operation is running\n")
-            alertMessage = String(localized: "shortcuts.error.busy")
-            showAlert = true
+            appendConsoleText("[palladium] shortcut request received while another operation is running; queued\n")
+            enqueueDownloadRequest(
+                url: trimmedURL,
+                preset: preset,
+                afterDownloadBehavior: destinationBehavior,
+                outputTitleHint: nil
+            )
             showTemporaryToast(String(localized: "shortcuts.toast.received"))
             return
         }
@@ -491,12 +600,16 @@ extension ContentView {
         urlText = sharedLink
         appendConsoleText("[palladium] app opened via url scheme. link: \(sharedLink)\n")
 
-        if isRunning {
-            appendConsoleText("[palladium] download already running, queued link in input field only\n")
-            return
-        }
-
         if shareSheetDownloadMode == .ask {
+            if isRunning || isPackageRunning || isDownloadPaused {
+                enqueueDownloadRequest(
+                    url: sharedLink,
+                    preset: selectedPreset,
+                    afterDownloadBehavior: afterDownloadBehavior,
+                    outputTitleHint: nil
+                )
+                return
+            }
             shareSheetURL = sharedLink
             showShareSheetDownloadPicker = true
             return
@@ -514,6 +627,8 @@ extension ContentView {
             markUnfinishedDownloadProgressItems(.cancelled)
             progressText = String(localized: "download.status.cancelled")
             statusText = "cancelled"
+            persistDownloadSessionState()
+            startNextQueuedDownloadIfPossible()
             return
         }
         guard isRunning else { return }
@@ -537,12 +652,14 @@ extension ContentView {
         ffmpegProgressDurationSeconds = nil
         isInstallingPackagesDuringDownload = false
         progressText = "Pausing..."
+        persistDownloadSessionState()
     }
 
     func resumeDownloadFlow() {
         guard isDownloadPaused, let pausedDownloadContext else { return }
         isDownloadPaused = false
         markUnfinishedDownloadProgressItems(.running)
+        persistDownloadSessionState()
         runDownloadFlow(
             urlOverride: pausedDownloadContext.url,
             presetOverride: pausedDownloadContext.preset,
@@ -716,6 +833,25 @@ extension ContentView {
             return
         }
 
+        if let activeDownloadProgressItemID,
+           let activeIndex = downloadProgressItems.firstIndex(where: { $0.id == activeDownloadProgressItemID }),
+           downloadProgressItems[activeIndex].percent == nil,
+           downloadProgressItems[activeIndex].sizeText == nil,
+           downloadProgressItems[activeIndex].speedText == nil,
+           downloadProgressItems[activeIndex].etaText == nil,
+           downloadProgressItems[activeIndex].state != .completed {
+            downloadProgressItems[activeIndex].fileName = fileName
+            updateActiveDownloadProgressItem { item in
+                item.percent = percent ?? item.percent
+                item.sizeText = sizeText ?? item.sizeText
+                item.speedText = speedText ?? item.speedText
+                item.etaText = etaText ?? item.etaText
+                item.detailText = detailText ?? item.detailText
+                item.state = state
+            }
+            return
+        }
+
         let item = DownloadProgressItem(
             fileName: fileName,
             percent: percent,
@@ -737,8 +873,22 @@ extension ContentView {
         update(&downloadProgressItems[index])
     }
 
+    private func updateDownloadProgressItem(id: UUID, _ update: (inout DownloadProgressItem) -> Void) {
+        guard let index = downloadProgressItems.firstIndex(where: { $0.id == id }) else {
+            return
+        }
+        update(&downloadProgressItems[index])
+    }
+
     private func markDownloadProgressItems(_ state: DownloadProgressItem.State) {
         for index in downloadProgressItems.indices {
+            let currentState = downloadProgressItems[index].state
+            if currentState == .queued || currentState == .failed || currentState == .cancelled {
+                continue
+            }
+            if currentState == .completed && state != .completed {
+                continue
+            }
             downloadProgressItems[index].state = state
             if state == .completed {
                 downloadProgressItems[index].percent = 100
@@ -750,7 +900,11 @@ extension ContentView {
 
     private func markUnfinishedDownloadProgressItems(_ state: DownloadProgressItem.State) {
         for index in downloadProgressItems.indices {
-            guard downloadProgressItems[index].state != .completed else { continue }
+            let currentState = downloadProgressItems[index].state
+            guard currentState != .completed else { continue }
+            guard currentState != .queued else { continue }
+            guard currentState != .failed else { continue }
+            guard currentState != .cancelled else { continue }
             downloadProgressItems[index].state = state
             switch state {
             case .paused:
@@ -801,7 +955,7 @@ extension ContentView {
     }
 
     private func fallbackActiveDownloadName() -> String {
-        let trimmedURL = urlText.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedURL = (activeDownloadContext?.url ?? urlText).trimmingCharacters(in: .whitespacesAndNewlines)
         guard let url = URL(string: trimmedURL) else {
             return String(localized: "download.fallback_title")
         }

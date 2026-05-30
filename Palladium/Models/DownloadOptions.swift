@@ -131,6 +131,46 @@ enum ShareSheetDownloadMode: String, Codable, CaseIterable, Identifiable {
     }
 }
 
+enum DownloadSpeedMode: String, Codable, CaseIterable, Identifiable {
+    case safe
+    case fast
+    case aggressive
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .safe: return "Safe"
+        case .fast: return "Fast"
+        case .aggressive: return "Aggressive"
+        }
+    }
+
+    var helpText: String {
+        switch self {
+        case .safe: return "Stable on strict sites; fewer parallel fragments."
+        case .fast: return "Balanced speed for most sites."
+        case .aggressive: return "More parallel fragments; may trigger host limits."
+        }
+    }
+
+    var fragmentCount: Int {
+        switch self {
+        case .safe: return 4
+        case .fast: return 8
+        case .aggressive: return 16
+        }
+    }
+
+    var httpChunkSize: String {
+        switch self {
+        case .safe: return "5M"
+        case .fast: return "10M"
+        case .aggressive: return "20M"
+        }
+    }
+}
+
 enum SubtitleLanguageOption: String, Codable, CaseIterable, Identifiable {
     case english = "en"
     case spanish = "es.*"

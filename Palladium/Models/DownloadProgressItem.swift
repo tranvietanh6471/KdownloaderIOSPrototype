@@ -1,7 +1,7 @@
 import Foundation
 
-struct DownloadProgressItem: Identifiable, Equatable {
-    enum State: Equatable {
+struct DownloadProgressItem: Identifiable, Equatable, Codable {
+    enum State: Equatable, Codable {
         case queued
         case running
         case paused
@@ -41,10 +41,41 @@ struct DownloadProgressItem: Identifiable, Equatable {
     }
 }
 
-struct DownloadResumeContext {
+struct DownloadResumeContext: Codable {
     let url: String
     let preset: DownloadPreset
     let afterDownloadBehavior: AfterDownloadBehavior
     let outputTitleHint: String?
     let runOutputURL: URL
+}
+
+struct QueuedDownloadRequest: Identifiable, Codable {
+    let id: UUID
+    let progressItemID: UUID
+    let url: String
+    let preset: DownloadPreset
+    let afterDownloadBehavior: AfterDownloadBehavior
+    let outputTitleHint: String?
+
+    init(
+        id: UUID = UUID(),
+        progressItemID: UUID,
+        url: String,
+        preset: DownloadPreset,
+        afterDownloadBehavior: AfterDownloadBehavior,
+        outputTitleHint: String?
+    ) {
+        self.id = id
+        self.progressItemID = progressItemID
+        self.url = url
+        self.preset = preset
+        self.afterDownloadBehavior = afterDownloadBehavior
+        self.outputTitleHint = outputTitleHint
+    }
+}
+
+struct PersistedDownloadSessionState: Codable {
+    var queuedRequests: [QueuedDownloadRequest] = []
+    var pausedContext: DownloadResumeContext?
+    var progressItems: [DownloadProgressItem] = []
 }

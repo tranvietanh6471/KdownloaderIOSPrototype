@@ -167,6 +167,14 @@ struct FileBrowserTabView: View {
         .contextMenu {
             fileActions(for: item)
         }
+        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+            Button(role: .destructive) {
+                delete(item)
+            } label: {
+                Label("Delete", systemImage: "xmark")
+            }
+            .tint(.red)
+        }
     }
 
     @ViewBuilder

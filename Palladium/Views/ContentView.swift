@@ -60,6 +60,7 @@ struct ContentView: View {
     static let defaultUseCookiesDefaultsKey = "palladium.defaultUseCookies"
     static let restoreDownloadDefaultsDefaultsKey = "palladium.restoreDownloadDefaults"
     static let autoRetryFailedDownloadsDefaultsKey = "palladium.autoRetryFailedDownloads"
+    static let downloadSpeedModeDefaultsKey = "palladium.downloadSpeedMode"
     static let detailedProgressEnabledDefaultsKey = "palladium.detailedProgressEnabled"
     static let subtitleLanguagePatternDefaultsKey = "palladium.subtitleLanguagePattern"
     static let customSubtitleLanguagePatternDefaultsKey = "palladium.customSubtitleLanguagePattern"
@@ -68,6 +69,7 @@ struct ContentView: View {
     static let linkHistoryEnabledDefaultsKey = "palladium.linkHistoryEnabled"
     static let linkHistoryLimitDefaultsKey = "palladium.linkHistoryLimit"
     static let linkHistoryEntriesDefaultsKey = "palladium.linkHistoryEntries"
+    static let downloadSessionStateDefaultsKey = "palladium.downloadSessionState"
     static let appAppearanceModeDefaultsKey = "palladium.appAppearanceMode"
     static let packageVersionsTextDefaultsKey = "palladium.packageVersionsText"
     static let checkPackageUpdatesOnLaunchDefaultsKey = "palladium.checkPackageUpdatesOnLaunch"
@@ -85,6 +87,7 @@ struct ContentView: View {
     @State var downloadPauseRequested = false
     @State var activeDownloadContext: DownloadResumeContext?
     @State var pausedDownloadContext: DownloadResumeContext?
+    @State var queuedDownloadRequests: [QueuedDownloadRequest] = []
     @State var playlistProgress: PlaylistProgressSnapshot?
     @State var downloadErrorText: String?
     @State var selectedPreset: DownloadPreset
@@ -104,6 +107,7 @@ struct ContentView: View {
     @State var defaultUseCookies: Bool
     @State var restoreDownloadDefaults: Bool
     @State var autoRetryFailedDownloads: Bool
+    @State var downloadSpeedMode: DownloadSpeedMode
     @State var detailedProgressEnabled: Bool
     @State var subtitleLanguagePattern: String
     @State var customSubtitleLanguagePattern: String
@@ -152,7 +156,24 @@ struct ContentView: View {
 
     init() {
         let rememberPreset = Self.loadRememberSelectedPreset()
+        let downloadSessionState = Self.loadDownloadSessionState()
+        let restoredPausedContext = downloadSessionState.pausedContext
+        let restoredProgressItems = downloadSessionState.progressItems.map { item in
+            var restoredItem = item
+            if restoredPausedContext != nil,
+               restoredItem.state == .running || restoredItem.state == .processing {
+                restoredItem.state = .paused
+                restoredItem.detailText = "Paused"
+            }
+            return restoredItem
+        }
         _urlText = State(initialValue: Self.isDebuggerAttached() ? "https://www.youtube.com/watch?v=jNQXAC9IVRw" : "")
+        _progressText = State(initialValue: restoredPausedContext == nil ? String(localized: "download.prompt.idle") : "Paused")
+        _statusText = State(initialValue: restoredPausedContext == nil ? "idle" : "paused")
+        _downloadProgressItems = State(initialValue: restoredProgressItems)
+        _isDownloadPaused = State(initialValue: restoredPausedContext != nil)
+        _pausedDownloadContext = State(initialValue: restoredPausedContext)
+        _queuedDownloadRequests = State(initialValue: downloadSessionState.queuedRequests)
         _selectedPreset = State(initialValue: Self.loadSelectedPreset(rememberSelection: rememberPreset))
         _customArgsText = State(initialValue: Self.loadCustomArgs())
         _extraArgsText = State(initialValue: Self.loadExtraArgs())
@@ -175,6 +196,7 @@ struct ContentView: View {
         _defaultUseCookies = State(initialValue: defCookies)
         _restoreDownloadDefaults = State(initialValue: restoreDefaults)
         _autoRetryFailedDownloads = State(initialValue: Self.loadAutoRetryFailedDownloads())
+        _downloadSpeedMode = State(initialValue: Self.loadDownloadSpeedMode())
         _detailedProgressEnabled = State(initialValue: Self.loadDetailedProgressEnabled())
         _subtitleLanguagePattern = State(initialValue: Self.loadSubtitleLanguagePattern())
         _customSubtitleLanguagePattern = State(initialValue: Self.loadCustomSubtitleLanguagePattern())
@@ -195,16 +217,12 @@ struct ContentView: View {
         ZStack(alignment: .top) {
             TabView(selection: $selectedTab) {
                 BrowserTabView(
-                    isRunning: isRunning || isPackageRunning,
+                    isRunning: isRunning || isPackageRunning || isDownloadPaused,
                     onDownloadURL: { detectedURL, titleHint in
                         let trimmedURL = detectedURL.trimmingCharacters(in: .whitespacesAndNewlines)
                         guard !trimmedURL.isEmpty else { return }
                         urlText = trimmedURL
                         selectedTab = .download
-                        if isRunning || isPackageRunning {
-                            showTemporaryToast("Link loaded into Downloads")
-                            return
-                        }
                         appendConsoleText("[kdownloader] browser download started: \(trimmedURL)\n", source: .app)
                         runDownloadFlow(
                             urlOverride: trimmedURL,
@@ -268,6 +286,7 @@ struct ContentView: View {
                     rememberSelectedPreset: $rememberSelectedPreset,
                     autoDownloadOnPaste: $autoDownloadOnPaste,
                     autoRetryFailedDownloads: $autoRetryFailedDownloads,
+                    downloadSpeedMode: $downloadSpeedMode,
                     detailedProgressEnabled: $detailedProgressEnabled,
                     shareSheetDownloadMode: $shareSheetDownloadMode,
                     linkHistoryEnabled: $linkHistoryEnabled,
@@ -402,6 +421,9 @@ struct ContentView: View {
         .onChange(of: autoRetryFailedDownloads, initial: false) {
             persistPreferences()
         }
+        .onChange(of: downloadSpeedMode, initial: false) {
+            persistPreferences()
+        }
         .onChange(of: subtitleLanguagePattern, initial: false) {
             persistPreferences()
         }
@@ -444,6 +466,9 @@ struct ContentView: View {
                     showDownloadActionSheet = true
                 } else {
                     reopenDownloadActionAfterAlert = false
+                    DispatchQueue.main.async {
+                        startNextQueuedDownloadIfPossible()
+                    }
                 }
             }
         } message: {
@@ -460,6 +485,7 @@ struct ContentView: View {
             if checkPackageUpdatesOnLaunch {
                 runPackageFlow(action: "check")
             }
+            startNextQueuedDownloadIfPossible()
         }
         .onDisappear {
             clearIdleTimerOverride()
@@ -469,11 +495,15 @@ struct ContentView: View {
         }
         .onChange(of: isPackageRunning, initial: true) { _, _ in
             syncIdleTimerDisabled()
+            startNextQueuedDownloadIfPossible()
         }
         .onChange(of: scenePhase, initial: true) { _, newPhase in
-            guard newPhase == .active else { return }
-            syncIdleTimerDisabled()
-            consumePendingShortcutDownloadRequestIfNeeded()
+            if newPhase == .active {
+                syncIdleTimerDisabled()
+                consumePendingShortcutDownloadRequestIfNeeded()
+            } else if newPhase == .background, isRunning {
+                appendConsoleText("[palladium] app entered background; using iOS background execution time\n")
+            }
         }
         .onOpenURL { incomingURL in
             handleIncomingDownloadURL(incomingURL)

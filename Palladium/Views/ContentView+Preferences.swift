@@ -52,6 +52,7 @@ extension ContentView {
         defaults.set(defaultUseCookies, forKey: Self.defaultUseCookiesDefaultsKey)
         defaults.set(restoreDownloadDefaults, forKey: Self.restoreDownloadDefaultsDefaultsKey)
         defaults.set(autoRetryFailedDownloads, forKey: Self.autoRetryFailedDownloadsDefaultsKey)
+        defaults.set(downloadSpeedMode.rawValue, forKey: Self.downloadSpeedModeDefaultsKey)
         defaults.set(subtitleLanguagePattern, forKey: Self.subtitleLanguagePatternDefaultsKey)
         defaults.set(customSubtitleLanguagePattern, forKey: Self.customSubtitleLanguagePatternDefaultsKey)
         defaults.set(useCookies, forKey: Self.useCookiesDefaultsKey)
@@ -60,6 +61,33 @@ extension ContentView {
         defaults.set(linkHistoryLimit, forKey: Self.linkHistoryLimitDefaultsKey)
         defaults.set(appAppearanceMode.rawValue, forKey: Self.appAppearanceModeDefaultsKey)
         defaults.set(checkPackageUpdatesOnLaunch, forKey: Self.checkPackageUpdatesOnLaunchDefaultsKey)
+    }
+
+    func persistDownloadSessionState() {
+        let resumableContext = pausedDownloadContext ?? (isRunning ? activeDownloadContext : nil)
+        let state = PersistedDownloadSessionState(
+            queuedRequests: queuedDownloadRequests,
+            pausedContext: resumableContext,
+            progressItems: downloadProgressItems.filter { item in
+                item.state == .queued || item.state == .running || item.state == .paused || item.state == .processing
+            }
+        )
+        let hasState = !state.queuedRequests.isEmpty || state.pausedContext != nil || !state.progressItems.isEmpty
+        guard hasState else {
+            UserDefaults.standard.removeObject(forKey: Self.downloadSessionStateDefaultsKey)
+            return
+        }
+        if let data = try? JSONEncoder().encode(state) {
+            UserDefaults.standard.set(data, forKey: Self.downloadSessionStateDefaultsKey)
+        }
+    }
+
+    static func loadDownloadSessionState() -> PersistedDownloadSessionState {
+        guard let data = UserDefaults.standard.data(forKey: downloadSessionStateDefaultsKey),
+              let decoded = try? JSONDecoder().decode(PersistedDownloadSessionState.self, from: data) else {
+            return PersistedDownloadSessionState()
+        }
+        return decoded
     }
 
     static func loadSelectedPreset(rememberSelection: Bool) -> DownloadPreset {
@@ -228,6 +256,14 @@ extension ContentView {
             return false
         }
         return UserDefaults.standard.bool(forKey: autoRetryFailedDownloadsDefaultsKey)
+    }
+
+    static func loadDownloadSpeedMode() -> DownloadSpeedMode {
+        guard let rawValue = UserDefaults.standard.string(forKey: downloadSpeedModeDefaultsKey),
+              let mode = DownloadSpeedMode(rawValue: rawValue) else {
+            return .fast
+        }
+        return mode
     }
 
     static func loadSubtitleLanguagePattern() -> String {

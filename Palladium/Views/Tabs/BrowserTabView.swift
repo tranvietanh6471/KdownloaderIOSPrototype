@@ -10,6 +10,8 @@ struct BrowserTabView: View {
     @State private var addressText = "https://www.google.com"
     @State private var detectedVideoURL = ""
     @State private var detectedTitleHint = ""
+    @State private var detectedVideos: [DetectedVideoCandidate] = []
+    @State private var showDetectedVideos = false
 
     var body: some View {
         NavigationStack {
@@ -18,6 +20,7 @@ struct BrowserTabView: View {
                     controller: controller,
                     detectedVideoURL: $detectedVideoURL,
                     detectedTitleHint: $detectedTitleHint,
+                    detectedVideos: $detectedVideos,
                     addressText: $addressText
                 )
                 .ignoresSafeArea(edges: .bottom)
@@ -33,6 +36,16 @@ struct BrowserTabView: View {
                             .truncationMode(.middle)
 
                         Spacer(minLength: 8)
+
+                        if detectedVideos.count > 1 {
+                            Button {
+                                showDetectedVideos = true
+                            } label: {
+                                Image(systemName: "list.bullet")
+                                    .font(.footnote.weight(.bold))
+                            }
+                            .buttonStyle(.bordered)
+                        }
 
                         Button {
                             onDownloadURL(detectedVideoURL, detectedTitleHint)
@@ -52,6 +65,9 @@ struct BrowserTabView: View {
             }
             .navigationTitle("Browser")
             .navigationBarTitleDisplayMode(.inline)
+            .sheet(isPresented: $showDetectedVideos) {
+                detectedVideosSheet
+            }
             .toolbar {
                 ToolbarItemGroup(placement: .topBarLeading) {
                     Button {
@@ -129,6 +145,60 @@ struct BrowserTabView: View {
         }
         return url.lastPathComponent.isEmpty ? (url.host ?? detectedVideoURL) : url.lastPathComponent
     }
+
+    private var detectedVideosSheet: some View {
+        NavigationStack {
+            List(detectedVideos) { candidate in
+                Button {
+                    detectedVideoURL = candidate.url
+                    detectedTitleHint = candidate.pageTitle
+                    showDetectedVideos = false
+                } label: {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(candidate.displayName)
+                            .font(.subheadline.weight(.semibold))
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+                        Text(candidate.url)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(2)
+                            .truncationMode(.middle)
+                    }
+                }
+            }
+            .navigationTitle("Detected Videos")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Done") {
+                        showDetectedVideos = false
+                    }
+                }
+            }
+        }
+    }
+}
+
+struct DetectedVideoCandidate: Identifiable, Equatable {
+    let id: String
+    let url: String
+    let pageTitle: String
+    let source: String
+    let score: Int
+
+    init(url: String, pageTitle: String, source: String, score: Int) {
+        self.id = url
+        self.url = url
+        self.pageTitle = pageTitle
+        self.source = source
+        self.score = score
+    }
+
+    var displayName: String {
+        guard let parsedURL = URL(string: url) else { return url }
+        return parsedURL.lastPathComponent.isEmpty ? (parsedURL.host ?? url) : parsedURL.lastPathComponent
+    }
 }
 
 @MainActor
@@ -178,6 +248,7 @@ private struct BrowserWebView: UIViewRepresentable {
     @ObservedObject var controller: BrowserController
     @Binding var detectedVideoURL: String
     @Binding var detectedTitleHint: String
+    @Binding var detectedVideos: [DetectedVideoCandidate]
     @Binding var addressText: String
 
     func makeCoordinator() -> Coordinator {
@@ -239,6 +310,7 @@ private struct BrowserWebView: UIViewRepresentable {
             parent.addressText = webView.url?.absoluteString ?? parent.addressText
             parent.detectedVideoURL = ""
             parent.detectedTitleHint = ""
+            parent.detectedVideos = []
         }
 
         func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
@@ -252,8 +324,22 @@ private struct BrowserWebView: UIViewRepresentable {
             } else if let payload = message.body as? [String: Any],
                       let url = payload["url"] as? String,
                       !url.isEmpty {
+                let title = (payload["pageTitle"] as? String) ?? ""
+                let source = (payload["source"] as? String) ?? ""
+                let score = (payload["score"] as? NSNumber)?.intValue ?? (payload["score"] as? Int) ?? 0
                 parent.detectedVideoURL = url
-                parent.detectedTitleHint = (payload["pageTitle"] as? String) ?? ""
+                parent.detectedTitleHint = title
+                let candidate = DetectedVideoCandidate(
+                    url: url,
+                    pageTitle: title,
+                    source: source,
+                    score: score
+                )
+                parent.detectedVideos.removeAll { $0.url == url }
+                parent.detectedVideos.insert(candidate, at: 0)
+                if parent.detectedVideos.count > 12 {
+                    parent.detectedVideos.removeLast(parent.detectedVideos.count - 12)
+                }
             }
         }
     }
@@ -262,10 +348,13 @@ private struct BrowserWebView: UIViewRepresentable {
     (() => {
       if (window.kdownloaderInstalled) { return; }
       window.kdownloaderInstalled = true;
-      let lastURL = "";
+      var lastURL = "";
+      var emitTimer = null;
+      const pageStartedAt = Date.now();
+      const candidates = new Map();
       const videoPattern = /\\.(m3u8|mp4|m4v|mov|webm|mpd|ts)(\\?|#|$)/i;
       const adHostPattern = /(^|\\.)(doubleclick\\.net|googlesyndication\\.com|googleadservices\\.com|adservice\\.google\\.|adnxs\\.com|adsrvr\\.org|pubmatic\\.com|rubiconproject\\.com|openx\\.net|criteo\\.com|taboola\\.com|outbrain\\.com|scorecardresearch\\.com|moatads\\.com|imasdk\\.googleapis\\.com)$/i;
-      const adPathPattern = /(^|[\\/_\\-.?&=])(ad|ads|advert|advertising|vast|vpaid|prebid|preroll|midroll|postroll|ima|beacon|pixel|tracking|analytics|sponsor|promo)([\\/_\\-.?&=]|$)/i;
+      const adPathPattern = /(^|[\\/_\\-.?&=])(ad|ads|advert|advertising|vast|vpaid|prebid|preroll|pre-roll|midroll|mid-roll|postroll|post-roll|instream|bumper|ima|beacon|pixel|tracking|analytics|sponsor|promo)([\\/_\\-.?&=]|$)/i;
 
       function absoluteURL(value) {
         if (!value || typeof value !== "string") { return ""; }
@@ -283,9 +372,47 @@ private struct BrowserWebView: UIViewRepresentable {
         }
       }
 
-      function isCandidate(value, source, entry) {
+      function mediaExtensionScore(url) {
+        if (/\\.(m3u8|mpd)(\\?|#|$)/i.test(url)) { return 45; }
+        if (/\\.(mp4|m4v|mov|webm)(\\?|#|$)/i.test(url)) { return 30; }
+        if (/\\.ts(\\?|#|$)/i.test(url)) { return -15; }
+        return 0;
+      }
+
+      function videoElementScore(video) {
+        if (!video) { return 0; }
+        const rect = video.getBoundingClientRect ? video.getBoundingClientRect() : { width: 0, height: 0 };
+        const area = Math.max(0, rect.width || 0) * Math.max(0, rect.height || 0);
+        const duration = Number(video.duration || 0);
+        let score = 0;
+        if (area > 160000) { score += 45; }
+        else if (area > 50000) { score += 25; }
+        else if (area > 8000) { score += 8; }
+        else { score -= 30; }
+        if (Number.isFinite(duration) && duration > 0) {
+          if (duration <= 75 && Date.now() - pageStartedAt < 18000) { score -= 90; }
+          else if (duration > 180) { score += 35; }
+          else if (duration > 75) { score += 15; }
+        }
+        if (!video.paused) { score += 8; }
+        return score;
+      }
+
+      function isCandidate(value, source, entry, video) {
         const url = absoluteURL(value);
         if (!url || isLikelyAd(url) || !videoPattern.test(url)) { return false; }
+        if (video) {
+          const duration = Number(video.duration || 0);
+          if (
+            Number.isFinite(duration)
+            && duration > 0
+            && duration <= 75
+            && Date.now() - pageStartedAt < 18000
+            && video.currentTime < Math.max(3, duration - 3)
+          ) {
+            return false;
+          }
+        }
         if (source === "resource") {
           const size = Number(entry && (entry.transferSize || entry.encodedBodySize || entry.decodedBodySize) || 0);
           if (!/\\.(m3u8|mpd)(\\?|#|$)/i.test(url) && size > 0 && size < 524288) {
@@ -310,23 +437,65 @@ private struct BrowserWebView: UIViewRepresentable {
         });
       }
 
-      function emit(value, source, entry) {
-        const url = absoluteURL(value);
-        if (!isCandidate(url, source, entry) || url === lastURL) { return; }
-        lastURL = url;
+      function candidateScore(url, source, entry, video) {
+        let score = mediaExtensionScore(url);
+        if (source === "video" || source === "video-source") { score += 30; }
+        else if (source === "dom") { score += 12; }
+        else if (source === "resource") { score -= 4; }
+        score += videoElementScore(video);
+        const size = Number(entry && (entry.transferSize || entry.encodedBodySize || entry.decodedBodySize) || 0);
+        if (size > 5 * 1024 * 1024) { score += 20; }
+        else if (size > 1024 * 1024) { score += 8; }
+        return score;
+      }
+
+      function flushCandidate() {
+        emitTimer = null;
+        let best = null;
+        candidates.forEach(candidate => {
+          if (!best || candidate.score > best.score || (candidate.score === best.score && candidate.seenAt > best.seenAt)) {
+            best = candidate;
+          }
+        });
+        if (!best || best.url === lastURL || best.score < 20) { return; }
+        lastURL = best.url;
         window.webkit.messageHandlers.kdownloaderVideo.postMessage({
-          url,
+          url: best.url,
           pageTitle: cleanTitle(),
           pageURL: location.href,
-          source
+          source: best.source,
+          score: best.score
         });
+      }
+
+      function scheduleCandidateFlush() {
+        if (emitTimer) { clearTimeout(emitTimer); }
+        emitTimer = setTimeout(flushCandidate, 1800);
+      }
+
+      function emit(value, source, entry, video) {
+        const url = absoluteURL(value);
+        if (!isCandidate(url, source, entry, video) || url === lastURL) { return; }
+        const score = candidateScore(url, source, entry, video);
+        const existing = candidates.get(url);
+        candidates.set(url, {
+          url,
+          source,
+          score: existing ? Math.max(existing.score, score) : score,
+          seenAt: Date.now()
+        });
+        if (candidates.size > 30) {
+          const oldest = [...candidates.entries()].sort((a, b) => a[1].seenAt - b[1].seenAt)[0];
+          if (oldest) { candidates.delete(oldest[0]); }
+        }
+        scheduleCandidateFlush();
       }
 
       function scanVideos() {
         removeKnownAdNodes();
         document.querySelectorAll("video").forEach(video => {
-          emit(video.currentSrc || video.src, "video");
-          video.querySelectorAll("source").forEach(source => emit(source.src, "video-source"));
+          emit(video.currentSrc || video.src, "video", null, video);
+          video.querySelectorAll("source").forEach(source => emit(source.src, "video-source", null, video));
         });
         document.querySelectorAll("source, a").forEach(node => {
           emit(node.src || node.href, "dom");

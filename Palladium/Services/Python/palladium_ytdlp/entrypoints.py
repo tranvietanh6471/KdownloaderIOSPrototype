@@ -410,6 +410,8 @@ def run_yt_dlp_flow(
     download_subtitles_override=None,
     embed_thumbnail_override=None,
     auto_retry_failed_downloads_override=None,
+    concurrent_fragments_override=None,
+    http_chunk_size_override=None,
     subtitle_language_pattern_override=None,
     cookie_file_path_override=None,
     run_output_dir_override=None,
@@ -466,6 +468,18 @@ def run_yt_dlp_flow(
         auto_retry_failed_downloads = os.environ.get("PALLADIUM_AUTO_RETRY_FAILED_DOWNLOADS", "").strip().lower() in ("1", "true", "yes", "on")
     else:
         auto_retry_failed_downloads = bool(auto_retry_failed_downloads_override)
+    if concurrent_fragments_override is None:
+        raw_concurrent_fragments = os.environ.get("KDOWNLOADER_CONCURRENT_FRAGMENTS", "").strip()
+    else:
+        raw_concurrent_fragments = str(concurrent_fragments_override).strip()
+    try:
+        concurrent_fragments = min(max(int(raw_concurrent_fragments or "8"), 1), 16)
+    except Exception:
+        concurrent_fragments = 8
+    if http_chunk_size_override is None:
+        http_chunk_size = os.environ.get("KDOWNLOADER_HTTP_CHUNK_SIZE", "10M").strip() or "10M"
+    else:
+        http_chunk_size = str(http_chunk_size_override).strip() or "10M"
     if subtitle_language_pattern_override is None:
         subtitle_language_pattern = os.environ.get("PALLADIUM_SUBTITLE_LANGUAGE_PATTERN", "en").strip() or "en"
     else:
@@ -664,6 +678,12 @@ def run_yt_dlp_flow(
                             "ejs:github",
                             "--cache-dir",
                             cache_dir if cache_dir else os.path.join(downloads_dir if downloads_dir else ".", ".cache"),
+                            "-N",
+                            str(concurrent_fragments),
+                            "--http-chunk-size",
+                            http_chunk_size,
+                            "--throttled-rate",
+                            "100K",
                             *(["--continue"] if allow_resume else ["--force-overwrites", "--no-continue"]),
                             "-P",
                             run_output_dir if run_output_dir else ".",
