@@ -1,5 +1,9 @@
 # Palladium Changelog
 
+## v1.0.9
+
+- Browser downloads now prefer detected direct media URLs over supported page URLs when both are available.
+
 ## v1.0.8
 
 - Fixed current Genz3X/ClipSexSub3X player support by using browser impersonation and extracting JWPlayer MP4 sources.

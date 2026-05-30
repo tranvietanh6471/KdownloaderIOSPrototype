@@ -153,11 +153,16 @@ struct BrowserTabView: View {
     }
 
     private var browserDownloadURL: String {
+        let detectedURL = detectedVideoURL.trimmingCharacters(in: .whitespacesAndNewlines)
+        if isDirectMediaURL(detectedURL) {
+            return detectedURL
+        }
+
         let pageURL = addressText.trimmingCharacters(in: .whitespacesAndNewlines)
         if isYouTubeVideoPage(pageURL) || isXHamsterVideoPage(pageURL) || isGenz3XVideoPage(pageURL) || isSextop1VideoPage(pageURL) || isAvpleVideoPage(pageURL) || isKubHDVideoPage(pageURL) || isAnime108VideoPage(pageURL) {
             return pageURL
         }
-        return detectedVideoURL
+        return detectedURL
     }
 
     private var browserDownloadLabel: String {
@@ -187,6 +192,16 @@ struct BrowserTabView: View {
             return downloadURL
         }
         return url.lastPathComponent.isEmpty ? (url.host ?? downloadURL) : url.lastPathComponent
+    }
+
+    private func isDirectMediaURL(_ value: String) -> Bool {
+        guard let url = URL(string: value),
+              let scheme = url.scheme?.lowercased(),
+              scheme == "http" || scheme == "https" else {
+            return false
+        }
+        let mediaExtensions: Set<String> = ["m3u8", "mp4", "m4v", "mov", "webm", "mpd", "ts"]
+        return mediaExtensions.contains(url.pathExtension.lowercased())
     }
 
     private func isYouTubeVideoPage(_ value: String) -> Bool {
