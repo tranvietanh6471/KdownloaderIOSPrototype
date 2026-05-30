@@ -139,174 +139,9 @@ struct DownloadTabView: View {
                     .padding(.horizontal, 20)
                 }
 
-                if !(isRunning || isPaused || !downloadProgressItems.isEmpty || shouldShowPlaylistProgress) {
-                    VStack(spacing: 10) {
-                    Picker("download.preset.title", selection: $selectedPreset) {
-                        ForEach(DownloadPreset.allCases) { preset in
-                            Text(preset.title).tag(preset)
-                        }
-                    }
-                    .pickerStyle(.segmented)
-                    .disabled(isRunning || isPaused)
-
-                    VStack(spacing: 8) {
-                        Button {
-                            guard !(isRunning || isPaused) else { return }
-                            withAnimation(.easeInOut(duration: 0.16)) {
-                                showDownloadOptions.toggle()
-                            }
-                        } label: {
-                            HStack(spacing: 10) {
-                                Image(systemName: "slider.horizontal.3")
-                                    .font(.system(size: 18, weight: .semibold))
-                                    .foregroundStyle(.blue)
-
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text("download.options.title")
-                                        .font(.subheadline.weight(.semibold))
-                                        .foregroundStyle(primaryTextColor)
-                                    Text(downloadOptionsSummary)
-                                        .font(.caption)
-                                        .foregroundStyle(.secondary)
-                                        .multilineTextAlignment(.leading)
-                                }
-
-                                Spacer()
-
-                                Image(systemName: "chevron.down")
-                                    .font(.caption.weight(.semibold))
-                                    .foregroundStyle(.secondary)
-                                    .rotationEffect(.degrees(showDownloadOptions ? 180 : 0))
-                                    .animation(.easeInOut(duration: 0.16), value: showDownloadOptions)
-                            }
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .contentShape(Rectangle())
-                        }
-                        .buttonStyle(.plain)
-                        .disabled(isRunning || isPaused)
-
-                        if showDownloadOptions {
-                            VStack(spacing: 8) {
-                                downloadOptionToggle(
-                                    title: String(localized: "download.options.playlist.title"),
-                                    subtitle: String(localized: "download.options.playlist.help"),
-                                    isOn: $downloadPlaylist
-                                )
-
-                                subtitleDownloadOptionRow
-
-                                downloadOptionToggle(
-                                    title: String(localized: "download.options.thumbnail.title"),
-                                    subtitle: String(localized: "download.options.thumbnail.help"),
-                                    isOn: $embedThumbnail
-                                )
-
-                                cookieSelectionRow
-                            }
-                            .transition(
-                                .asymmetric(
-                                    insertion: .opacity.combined(with: .scale(scale: 0.98, anchor: .top)),
-                                    removal: .opacity
-                                )
-                            )
-                        }
-                    }
-                    .padding(10)
-                    .background(cardElementBackground)
-                    .clipShape(RoundedRectangle(cornerRadius: 8))
-
-                    HStack(spacing: 8) {
-                        TextField("download.url.placeholder", text: $urlText)
-                            .textInputAutocapitalization(.never)
-                            .autocorrectionDisabled()
-                            .foregroundStyle(primaryTextColor)
-                            .padding(.horizontal, 10)
-                            .padding(.vertical, 10)
-                            .background(cardElementBackground)
-                            .clipShape(RoundedRectangle(cornerRadius: 6))
-
-                        Button(action: pasteOrClearURL) {
-                            Image(systemName: urlText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "doc.on.clipboard" : "xmark.circle.fill")
-                                .font(.system(size: 18, weight: .semibold))
-                                .frame(width: 42, height: 42)
-                                .background(cardElementBackground)
-                                .clipShape(RoundedRectangle(cornerRadius: 6))
-                        }
-                        .buttonStyle(.plain)
-                        .disabled(isRunning || isPaused)
-                    }
-                    .padding(8)
-                    .background(cardBackground)
-                    .clipShape(RoundedRectangle(cornerRadius: 8))
-
-                    if isRunning {
-                        HStack(spacing: 8) {
-                            Button(action: onPause) {
-                                Label("Pause", systemImage: "pause.circle.fill")
-                                    .font(.headline)
-                                    .frame(maxWidth: .infinity)
-                                    .padding(.vertical, 10)
-                            }
-                            .buttonStyle(.borderedProminent)
-                            .tint(.orange)
-
-                            Button(action: onCancel) {
-                                Label(String(localized: "common.cancel"), systemImage: "stop.circle.fill")
-                                    .font(.headline)
-                                    .frame(maxWidth: .infinity)
-                                    .padding(.vertical, 10)
-                            }
-                            .buttonStyle(.borderedProminent)
-                            .tint(.red)
-                        }
-                    } else if isPaused {
-                        HStack(spacing: 8) {
-                            Button(action: onResume) {
-                                Label("Resume", systemImage: "play.circle.fill")
-                                    .font(.headline)
-                                    .frame(maxWidth: .infinity)
-                                    .padding(.vertical, 10)
-                            }
-                            .buttonStyle(.borderedProminent)
-                            .tint(.blue)
-
-                            Button(action: onCancel) {
-                                Label(String(localized: "common.cancel"), systemImage: "xmark.circle.fill")
-                                    .font(.headline)
-                                    .frame(maxWidth: .infinity)
-                                    .padding(.vertical, 10)
-                            }
-                            .buttonStyle(.bordered)
-                            .tint(.red)
-                        }
-                    } else {
-                        Button(action: {
-                            if showDownloadOptions {
-                                withAnimation(.easeInOut(duration: 0.16)) {
-                                    showDownloadOptions = false
-                                }
-                            }
-                            onDownload()
-                        }) {
-                            HStack(spacing: 8) {
-                                Image(systemName: "arrow.down.circle.fill")
-                                Text("tab.download")
-                            }
-                            .font(.headline)
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 12)
-                        }
-                        .buttonStyle(.borderedProminent)
-                        .tint(.blue)
-                        .disabled(urlText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                    }
-                }
-                    .padding(12)
-                    .background(cardBackground)
-                    .clipShape(RoundedRectangle(cornerRadius: 10))
+                compactDownloadControls
                     .padding(.horizontal, 20)
                     .padding(.bottom, 8)
-                }
             }
             .padding(.vertical, 14)
         }
@@ -330,6 +165,110 @@ struct DownloadTabView: View {
             return
         }
         urlText = ""
+    }
+
+    private var compactDownloadControls: some View {
+        VStack(spacing: 7) {
+            Picker("download.preset.title", selection: $selectedPreset) {
+                ForEach(DownloadPreset.allCases) { preset in
+                    Text(preset.title).tag(preset)
+                }
+            }
+            .pickerStyle(.segmented)
+            .font(.caption)
+            .disabled(isRunning || isPaused)
+
+            HStack(spacing: 6) {
+                Button {
+                    guard !(isRunning || isPaused) else { return }
+                    withAnimation(.easeInOut(duration: 0.16)) {
+                        showDownloadOptions.toggle()
+                    }
+                } label: {
+                    Image(systemName: "slider.horizontal.3")
+                        .font(.system(size: 15, weight: .semibold))
+                        .frame(width: 34, height: 34)
+                        .background(cardElementBackground)
+                        .clipShape(RoundedRectangle(cornerRadius: 7))
+                }
+                .buttonStyle(.plain)
+                .disabled(isRunning || isPaused)
+                .accessibilityLabel("download.options.title")
+
+                TextField("download.url.placeholder", text: $urlText)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+                    .font(.footnote)
+                    .foregroundStyle(primaryTextColor)
+                    .padding(.horizontal, 9)
+                    .frame(height: 34)
+                    .background(cardElementBackground)
+                    .clipShape(RoundedRectangle(cornerRadius: 7))
+
+                Button(action: pasteOrClearURL) {
+                    Image(systemName: urlText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "doc.on.clipboard" : "xmark.circle.fill")
+                        .font(.system(size: 15, weight: .semibold))
+                        .frame(width: 34, height: 34)
+                        .background(cardElementBackground)
+                        .clipShape(RoundedRectangle(cornerRadius: 7))
+                }
+                .buttonStyle(.plain)
+
+                Button(action: {
+                    if showDownloadOptions {
+                        withAnimation(.easeInOut(duration: 0.16)) {
+                            showDownloadOptions = false
+                        }
+                    }
+                    onDownload()
+                }) {
+                    Image(systemName: isRunning || isPaused ? "plus.circle.fill" : "arrow.down.circle.fill")
+                        .font(.system(size: 17, weight: .semibold))
+                        .frame(width: 38, height: 34)
+                }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.small)
+                .tint(.blue)
+                .disabled(urlText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            }
+
+            if showDownloadOptions {
+                VStack(alignment: .leading, spacing: 7) {
+                    Text(downloadOptionsSummary)
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(2)
+
+                    downloadOptionToggle(
+                        title: String(localized: "download.options.playlist.title"),
+                        subtitle: String(localized: "download.options.playlist.help"),
+                        isOn: $downloadPlaylist
+                    )
+
+                    subtitleDownloadOptionRow
+
+                    downloadOptionToggle(
+                        title: String(localized: "download.options.thumbnail.title"),
+                        subtitle: String(localized: "download.options.thumbnail.help"),
+                        isOn: $embedThumbnail
+                    )
+
+                    cookieSelectionRow
+                }
+                .padding(8)
+                .background(cardElementBackground)
+                .clipShape(RoundedRectangle(cornerRadius: 8))
+                .transition(
+                    .asymmetric(
+                        insertion: .opacity.combined(with: .scale(scale: 0.98, anchor: .bottom)),
+                        removal: .opacity
+                    )
+                )
+            }
+        }
+        .padding(8)
+        .background(cardBackground)
+        .clipShape(RoundedRectangle(cornerRadius: 10))
     }
 
     private var compactDownloadStatusBar: some View {
@@ -602,11 +541,12 @@ struct DownloadTabView: View {
                     }
                 }
             }
-            .frame(maxHeight: 340)
+            .frame(maxHeight: .infinity)
         }
         .padding(8)
         .background(cardElementBackground)
         .clipShape(RoundedRectangle(cornerRadius: 8))
+        .frame(maxHeight: .infinity)
     }
 
     private func downloadProgressCard(_ item: DownloadProgressItem) -> some View {

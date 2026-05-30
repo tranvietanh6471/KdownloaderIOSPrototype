@@ -282,7 +282,7 @@ extension ContentView {
         let liveLogFD: Int32? = writeFD
         let presetAtStartValue = resumeContext?.preset ?? presetOverride ?? selectedPreset
         let presetAtStart = presetAtStartValue.pythonValue
-        let extraArgsAtStart = extraArgsText.trimmingCharacters(in: .whitespacesAndNewlines)
+        let extraArgsAtStart = resolvedExtraArgsTextForDownload()
         let outputTitleHintAtStart = (resumeContext?.outputTitleHint ?? outputTitleHint)?.trimmingCharacters(in: .whitespacesAndNewlines)
         let presetArgsJSONAtStart = buildPresetArgumentsJSON()
         let selectedAfterDownloadBehavior = resumeContext?.afterDownloadBehavior ?? afterDownloadOverride ?? afterDownloadBehavior
@@ -669,6 +669,17 @@ extension ContentView {
         )
     }
 
+    private func resolvedExtraArgsTextForDownload() -> String {
+        let trimmedExtraArgs = extraArgsText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard cloudflareModeEnabled else { return trimmedExtraArgs }
+        let cloudflareArgs = #"--extractor-args "generic:impersonate""#
+        guard !trimmedExtraArgs.isEmpty else { return cloudflareArgs }
+        if trimmedExtraArgs.contains("generic:impersonate") {
+            return trimmedExtraArgs
+        }
+        return "\(trimmedExtraArgs) \(cloudflareArgs)"
+    }
+
     func updateProgress(from chunk: String) {
         let normalized = chunk
             .replacingOccurrences(of: "\r\n", with: "\n")
@@ -917,6 +928,11 @@ extension ContentView {
                 break
             }
         }
+    }
+
+    func removeCompletedDownloadProgressItems() {
+        downloadProgressItems.removeAll { $0.state == .completed }
+        persistDownloadSessionState()
     }
 
     private func parseDownloadDestination(from line: String) -> String? {

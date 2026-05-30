@@ -343,6 +343,7 @@ extension ContentView {
                 try FileManager.default.removeItem(at: destination)
             }
             try FileManager.default.copyItem(at: sourceURL, to: destination)
+            removeCompletedDownloadProgressItems()
             alertMessage = nil
             showAlert = false
             if result.isCollection {

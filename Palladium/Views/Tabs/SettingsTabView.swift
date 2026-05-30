@@ -20,6 +20,7 @@ struct SettingsTabView: View {
     @Binding var rememberSelectedPreset: Bool
     @Binding var autoDownloadOnPaste: Bool
     @Binding var autoRetryFailedDownloads: Bool
+    @Binding var cloudflareModeEnabled: Bool
     @Binding var downloadSpeedMode: DownloadSpeedMode
     @Binding var detailedProgressEnabled: Bool
     @Binding var shareSheetDownloadMode: ShareSheetDownloadMode
@@ -162,6 +163,7 @@ struct SettingsTabView: View {
                         rememberSelectedPreset: $rememberSelectedPreset,
                         autoDownloadOnPaste: $autoDownloadOnPaste,
                         autoRetryFailedDownloads: $autoRetryFailedDownloads,
+                        cloudflareModeEnabled: $cloudflareModeEnabled,
                         downloadSpeedMode: $downloadSpeedMode,
                         detailedProgressEnabled: $detailedProgressEnabled,
                         shareSheetDownloadMode: $shareSheetDownloadMode,

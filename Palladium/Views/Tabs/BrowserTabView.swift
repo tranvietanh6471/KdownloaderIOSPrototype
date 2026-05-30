@@ -74,18 +74,20 @@ struct BrowserTabView: View {
                         controller.goBack()
                     } label: {
                         Image(systemName: "chevron.left")
-                            .font(.caption.weight(.semibold))
+                            .font(.system(size: 12, weight: .semibold))
+                            .frame(width: 24, height: 24)
                     }
-                    .controlSize(.small)
+                    .buttonStyle(.plain)
                     .disabled(!controller.canGoBack)
 
                     Button {
                         controller.goForward()
                     } label: {
                         Image(systemName: "chevron.right")
-                            .font(.caption.weight(.semibold))
+                            .font(.system(size: 12, weight: .semibold))
+                            .frame(width: 24, height: 24)
                     }
-                    .controlSize(.small)
+                    .buttonStyle(.plain)
                     .disabled(!controller.canGoForward)
                 }
 
@@ -107,6 +109,7 @@ struct BrowserTabView: View {
                                 Image(systemName: "xmark.circle.fill")
                                     .font(.caption)
                                     .foregroundStyle(.secondary)
+                                    .frame(width: 18, height: 18)
                             }
                             .buttonStyle(.plain)
                             .accessibilityLabel("Clear URL")
@@ -123,17 +126,19 @@ struct BrowserTabView: View {
                         controller.reload()
                     } label: {
                         Image(systemName: "arrow.clockwise")
-                            .font(.caption.weight(.semibold))
+                            .font(.system(size: 12, weight: .semibold))
+                            .frame(width: 24, height: 24)
                     }
-                    .controlSize(.small)
+                    .buttonStyle(.plain)
 
                     Button {
                         controller.load("https://www.google.com")
                     } label: {
                         Image(systemName: "house")
-                            .font(.caption.weight(.semibold))
+                            .font(.system(size: 12, weight: .semibold))
+                            .frame(width: 24, height: 24)
                     }
-                    .controlSize(.small)
+                    .buttonStyle(.plain)
                 }
             }
         }

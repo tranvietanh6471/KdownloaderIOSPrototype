@@ -60,6 +60,7 @@ struct ContentView: View {
     static let defaultUseCookiesDefaultsKey = "palladium.defaultUseCookies"
     static let restoreDownloadDefaultsDefaultsKey = "palladium.restoreDownloadDefaults"
     static let autoRetryFailedDownloadsDefaultsKey = "palladium.autoRetryFailedDownloads"
+    static let cloudflareModeEnabledDefaultsKey = "palladium.cloudflareModeEnabled"
     static let downloadSpeedModeDefaultsKey = "palladium.downloadSpeedMode"
     static let detailedProgressEnabledDefaultsKey = "palladium.detailedProgressEnabled"
     static let subtitleLanguagePatternDefaultsKey = "palladium.subtitleLanguagePattern"
@@ -107,6 +108,7 @@ struct ContentView: View {
     @State var defaultUseCookies: Bool
     @State var restoreDownloadDefaults: Bool
     @State var autoRetryFailedDownloads: Bool
+    @State var cloudflareModeEnabled: Bool
     @State var downloadSpeedMode: DownloadSpeedMode
     @State var detailedProgressEnabled: Bool
     @State var subtitleLanguagePattern: String
@@ -196,6 +198,7 @@ struct ContentView: View {
         _defaultUseCookies = State(initialValue: defCookies)
         _restoreDownloadDefaults = State(initialValue: restoreDefaults)
         _autoRetryFailedDownloads = State(initialValue: Self.loadAutoRetryFailedDownloads())
+        _cloudflareModeEnabled = State(initialValue: Self.loadCloudflareModeEnabled())
         _downloadSpeedMode = State(initialValue: Self.loadDownloadSpeedMode())
         _detailedProgressEnabled = State(initialValue: Self.loadDetailedProgressEnabled())
         _subtitleLanguagePattern = State(initialValue: Self.loadSubtitleLanguagePattern())
@@ -286,6 +289,7 @@ struct ContentView: View {
                     rememberSelectedPreset: $rememberSelectedPreset,
                     autoDownloadOnPaste: $autoDownloadOnPaste,
                     autoRetryFailedDownloads: $autoRetryFailedDownloads,
+                    cloudflareModeEnabled: $cloudflareModeEnabled,
                     downloadSpeedMode: $downloadSpeedMode,
                     detailedProgressEnabled: $detailedProgressEnabled,
                     shareSheetDownloadMode: $shareSheetDownloadMode,
@@ -419,6 +423,9 @@ struct ContentView: View {
             persistPreferences()
         }
         .onChange(of: autoRetryFailedDownloads, initial: false) {
+            persistPreferences()
+        }
+        .onChange(of: cloudflareModeEnabled, initial: false) {
             persistPreferences()
         }
         .onChange(of: downloadSpeedMode, initial: false) {

@@ -15,6 +15,10 @@ struct FileBrowserTabView: View {
     @State private var renameTarget: KdownloaderFileItem?
     @State private var renameText = ""
     @State private var moveTarget: KdownloaderFileItem?
+    @State private var moveSelectionRequest: KdownloaderSelectionMoveRequest?
+    @State private var isSelecting = false
+    @State private var selectedItemIDs = Set<String>()
+    @State private var moveSelectionToNewFolder = false
     @State private var playerURL: KdownloaderIdentifiedURL?
     @State private var previewURL: KdownloaderIdentifiedURL?
     @State private var sharePayload: SharePayload?
@@ -35,33 +39,74 @@ struct FileBrowserTabView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItemGroup(placement: .topBarLeading) {
-                    Button {
-                        openParentFolder()
-                    } label: {
-                        Image(systemName: "chevron.up")
+                    if isSelecting {
+                        Button {
+                            shareSelectedItems()
+                        } label: {
+                            Image(systemName: "square.and.arrow.up")
+                        }
+                        .disabled(selectedItems.isEmpty)
+                    } else {
+                        Button {
+                            openParentFolder()
+                        } label: {
+                            Image(systemName: "chevron.up")
+                        }
+                        .disabled(!canOpenParent)
                     }
-                    .disabled(!canOpenParent)
 
                     Button {
-                        currentURL = rootURL
-                        refresh()
+                        toggleSelectionMode()
                     } label: {
-                        Image(systemName: "house")
+                        Text(isSelecting ? "Done" : "Sel")
                     }
                 }
 
                 ToolbarItemGroup(placement: .topBarTrailing) {
-                    Button {
-                        refresh()
-                    } label: {
-                        Image(systemName: "arrow.clockwise")
-                    }
+                    if isSelecting {
+                        Button("All") {
+                            selectAllItems()
+                        }
 
-                    Button {
-                        newFolderName = ""
-                        showCreateFolder = true
-                    } label: {
-                        Image(systemName: "folder.badge.plus")
+                        Menu {
+                            Button {
+                                deleteSelectedItems()
+                            } label: {
+                                Label("Delete", systemImage: "trash")
+                            }
+                            .disabled(selectedItems.isEmpty)
+
+                            Button {
+                                startMovingSelectedItems()
+                            } label: {
+                                Label("Move To", systemImage: "folder")
+                            }
+                            .disabled(selectedItems.isEmpty)
+
+                            Button {
+                                moveSelectionToNewFolder = !selectedItems.isEmpty
+                                newFolderName = ""
+                                showCreateFolder = true
+                            } label: {
+                                Label("New Folder", systemImage: "folder.badge.plus")
+                            }
+                        } label: {
+                            Image(systemName: "ellipsis.circle")
+                        }
+                    } else {
+                        Button {
+                            refresh()
+                        } label: {
+                            Image(systemName: "arrow.clockwise")
+                        }
+
+                        Button {
+                            moveSelectionToNewFolder = false
+                            newFolderName = ""
+                            showCreateFolder = true
+                        } label: {
+                            Image(systemName: "folder.badge.plus")
+                        }
                     }
                 }
             }
@@ -85,6 +130,11 @@ struct FileBrowserTabView: View {
             .sheet(item: $moveTarget) { item in
                 MoveDestinationPicker(rootURL: rootURL, excludedURL: item.url) { destination in
                     move(item, to: destination)
+                }
+            }
+            .sheet(item: $moveSelectionRequest) { request in
+                MoveDestinationPicker(rootURL: rootURL, excludedURLs: request.urls) { destination in
+                    moveSelectedItems(request.items, to: destination)
                 }
             }
             .sheet(item: $playerURL) { item in
@@ -129,9 +179,20 @@ struct FileBrowserTabView: View {
     private func fileRow(_ item: KdownloaderFileItem) -> some View {
         HStack(spacing: 8) {
             Button {
+                if isSelecting {
+                    toggleItemSelection(item)
+                    return
+                }
                 open(item)
             } label: {
                 HStack(spacing: 12) {
+                    if isSelecting {
+                        Image(systemName: selectedItemIDs.contains(item.id) ? "checkmark.circle.fill" : "circle")
+                            .font(.system(size: 21, weight: .semibold))
+                            .foregroundStyle(selectedItemIDs.contains(item.id) ? .blue : .secondary)
+                            .frame(width: 24)
+                    }
+
                     Image(systemName: item.iconName)
                         .font(.system(size: 22, weight: .semibold))
                         .foregroundStyle(item.isDirectory ? .blue : .secondary)
@@ -155,25 +216,31 @@ struct FileBrowserTabView: View {
             }
             .buttonStyle(.plain)
 
-            Menu {
-                fileActions(for: item)
-            } label: {
-                Image(systemName: "ellipsis.circle")
-                    .font(.system(size: 20, weight: .semibold))
-                    .foregroundStyle(.secondary)
-                    .frame(width: 36, height: 36)
+            if !isSelecting {
+                Menu {
+                    fileActions(for: item)
+                } label: {
+                    Image(systemName: "ellipsis.circle")
+                        .font(.system(size: 20, weight: .semibold))
+                        .foregroundStyle(.secondary)
+                        .frame(width: 36, height: 36)
+                }
             }
         }
         .contextMenu {
-            fileActions(for: item)
+            if !isSelecting {
+                fileActions(for: item)
+            }
         }
         .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-            Button(role: .destructive) {
-                delete(item)
-            } label: {
-                Label("Delete", systemImage: "xmark")
+            if !isSelecting {
+                Button(role: .destructive) {
+                    delete(item)
+                } label: {
+                    Label("Delete", systemImage: "xmark")
+                }
+                .tint(.red)
             }
-            .tint(.red)
         }
     }
 
@@ -234,6 +301,71 @@ struct FileBrowserTabView: View {
         return currentURL.standardizedFileURL.path != rootURL.standardizedFileURL.path
     }
 
+    private var selectedItems: [KdownloaderFileItem] {
+        items.filter { selectedItemIDs.contains($0.id) }
+    }
+
+    private func toggleSelectionMode() {
+        isSelecting.toggle()
+        if !isSelecting {
+            selectedItemIDs.removeAll()
+            moveSelectionToNewFolder = false
+        }
+    }
+
+    private func toggleItemSelection(_ item: KdownloaderFileItem) {
+        if selectedItemIDs.contains(item.id) {
+            selectedItemIDs.remove(item.id)
+        } else {
+            selectedItemIDs.insert(item.id)
+        }
+    }
+
+    private func selectAllItems() {
+        selectedItemIDs = Set(items.map(\.id))
+    }
+
+    private func shareSelectedItems() {
+        let selectedURLs = selectedItems.map(\.url)
+        guard !selectedURLs.isEmpty else { return }
+        sharePayload = SharePayload(activityItems: selectedURLs)
+    }
+
+    private func startMovingSelectedItems() {
+        let selected = selectedItems
+        guard !selected.isEmpty else { return }
+        moveSelectionRequest = KdownloaderSelectionMoveRequest(items: selected)
+    }
+
+    private func deleteSelectedItems() {
+        let selected = selectedItems
+        guard !selected.isEmpty else { return }
+        do {
+            for item in selected {
+                try FileManager.default.removeItem(at: item.url)
+            }
+            selectedItemIDs.removeAll()
+            refresh()
+        } catch {
+            present(error)
+        }
+    }
+
+    private func moveSelectedItems(_ selectedItems: [KdownloaderFileItem], to destinationFolder: URL) {
+        do {
+            for item in selectedItems {
+                guard FileManager.default.fileExists(atPath: item.url.path) else { continue }
+                let destination = uniqueDestination(for: destinationFolder.appendingPathComponent(item.name, isDirectory: item.isDirectory))
+                try FileManager.default.moveItem(at: item.url, to: destination)
+            }
+            selectedItemIDs.removeAll()
+            moveSelectionRequest = nil
+            refresh()
+        } catch {
+            present(error)
+        }
+    }
+
     private func setupIfNeeded() {
         guard rootURL == nil else {
             refresh()
@@ -273,6 +405,7 @@ struct FileBrowserTabView: View {
                     }
                     return lhs.name.localizedCaseInsensitiveCompare(rhs.name) == .orderedAscending
                 }
+            selectedItemIDs.formIntersection(Set(items.map(\.id)))
         } catch {
             present(error)
         }
@@ -304,6 +437,10 @@ struct FileBrowserTabView: View {
             let name = try validatedFileName(newFolderName)
             let destination = uniqueDestination(for: currentURL.appendingPathComponent(name, isDirectory: true))
             try FileManager.default.createDirectory(at: destination, withIntermediateDirectories: true)
+            if moveSelectionToNewFolder {
+                moveSelectedItems(selectedItems, to: destination)
+            }
+            moveSelectionToNewFolder = false
             showCreateFolder = false
             refresh()
         } catch {
@@ -405,6 +542,7 @@ struct FileBrowserTabView: View {
                     Button("Cancel") {
                         showCreateFolder = false
                         renameTarget = nil
+                        moveSelectionToNewFolder = false
                     }
                 }
                 ToolbarItem(placement: .confirmationAction) {
@@ -483,13 +621,34 @@ struct KdownloaderIdentifiedURL: Identifiable {
     let url: URL
 }
 
+struct KdownloaderSelectionMoveRequest: Identifiable {
+    let id = UUID()
+    let items: [KdownloaderFileItem]
+
+    var urls: [URL] {
+        items.map(\.url)
+    }
+}
+
 private struct MoveDestinationPicker: View {
     let rootURL: URL?
-    let excludedURL: URL
+    let excludedURLs: [URL]
     let onMove: (URL) -> Void
 
     @Environment(\.dismiss) private var dismiss
     @State private var folders: [URL] = []
+
+    init(rootURL: URL?, excludedURL: URL, onMove: @escaping (URL) -> Void) {
+        self.rootURL = rootURL
+        self.excludedURLs = [excludedURL]
+        self.onMove = onMove
+    }
+
+    init(rootURL: URL?, excludedURLs: [URL], onMove: @escaping (URL) -> Void) {
+        self.rootURL = rootURL
+        self.excludedURLs = excludedURLs
+        self.onMove = onMove
+    }
 
     var body: some View {
         NavigationStack {
@@ -539,8 +698,10 @@ private struct MoveDestinationPicker: View {
 
     private func isExcluded(_ url: URL) -> Bool {
         let candidatePath = url.standardizedFileURL.path
-        let excludedPath = excludedURL.standardizedFileURL.path
-        return candidatePath == excludedPath || candidatePath.hasPrefix(excludedPath + "/")
+        return excludedURLs.contains { excludedURL in
+            let excludedPath = excludedURL.standardizedFileURL.path
+            return candidatePath == excludedPath || candidatePath.hasPrefix(excludedPath + "/")
+        }
     }
 
     private func folderDisplayName(_ folder: URL) -> String {

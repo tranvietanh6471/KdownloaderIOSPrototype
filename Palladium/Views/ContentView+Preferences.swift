@@ -52,6 +52,7 @@ extension ContentView {
         defaults.set(defaultUseCookies, forKey: Self.defaultUseCookiesDefaultsKey)
         defaults.set(restoreDownloadDefaults, forKey: Self.restoreDownloadDefaultsDefaultsKey)
         defaults.set(autoRetryFailedDownloads, forKey: Self.autoRetryFailedDownloadsDefaultsKey)
+        defaults.set(cloudflareModeEnabled, forKey: Self.cloudflareModeEnabledDefaultsKey)
         defaults.set(downloadSpeedMode.rawValue, forKey: Self.downloadSpeedModeDefaultsKey)
         defaults.set(subtitleLanguagePattern, forKey: Self.subtitleLanguagePatternDefaultsKey)
         defaults.set(customSubtitleLanguagePattern, forKey: Self.customSubtitleLanguagePatternDefaultsKey)
@@ -256,6 +257,13 @@ extension ContentView {
             return false
         }
         return UserDefaults.standard.bool(forKey: autoRetryFailedDownloadsDefaultsKey)
+    }
+
+    static func loadCloudflareModeEnabled() -> Bool {
+        if UserDefaults.standard.object(forKey: cloudflareModeEnabledDefaultsKey) == nil {
+            return false
+        }
+        return UserDefaults.standard.bool(forKey: cloudflareModeEnabledDefaultsKey)
     }
 
     static func loadDownloadSpeedMode() -> DownloadSpeedMode {

@@ -8,6 +8,7 @@ struct UseInterfaceSettingsView: View {
     @Binding var rememberSelectedPreset: Bool
     @Binding var autoDownloadOnPaste: Bool
     @Binding var autoRetryFailedDownloads: Bool
+    @Binding var cloudflareModeEnabled: Bool
     @Binding var downloadSpeedMode: DownloadSpeedMode
     @Binding var detailedProgressEnabled: Bool
     @Binding var shareSheetDownloadMode: ShareSheetDownloadMode
@@ -28,6 +29,7 @@ struct UseInterfaceSettingsView: View {
         rememberSelectedPreset: Binding<Bool>,
         autoDownloadOnPaste: Binding<Bool>,
         autoRetryFailedDownloads: Binding<Bool>,
+        cloudflareModeEnabled: Binding<Bool>,
         downloadSpeedMode: Binding<DownloadSpeedMode>,
         detailedProgressEnabled: Binding<Bool>,
         shareSheetDownloadMode: Binding<ShareSheetDownloadMode>,
@@ -43,6 +45,7 @@ struct UseInterfaceSettingsView: View {
         _rememberSelectedPreset = rememberSelectedPreset
         _autoDownloadOnPaste = autoDownloadOnPaste
         _autoRetryFailedDownloads = autoRetryFailedDownloads
+        _cloudflareModeEnabled = cloudflareModeEnabled
         _downloadSpeedMode = downloadSpeedMode
         _detailedProgressEnabled = detailedProgressEnabled
         _shareSheetDownloadMode = shareSheetDownloadMode
@@ -129,6 +132,19 @@ struct UseInterfaceSettingsView: View {
                 Toggle("settings.ui.retry_failed.toggle", isOn: $autoRetryFailedDownloads)
                     .disabled(isRunning)
 
+                HStack {
+                    Text("Cloudflare mode")
+                    Spacer()
+                    Picker("Cloudflare mode", selection: $cloudflareModeEnabled) {
+                        Text("On").tag(true)
+                        Text("Off").tag(false)
+                    }
+                    .pickerStyle(.segmented)
+                    .labelsHidden()
+                    .frame(width: 132)
+                }
+                .disabled(isRunning)
+
                 Toggle("settings.ui.progress.verbose", isOn: $detailedProgressEnabled)
                     .disabled(isRunning)
             } header: {
@@ -136,6 +152,7 @@ struct UseInterfaceSettingsView: View {
             } footer: {
                 VStack(alignment: .leading, spacing: 6) {
                     Text(downloadSpeedMode.helpText)
+                    Text("Use only for Cloudflare 403 links; it retries yt-dlp generic extraction with browser impersonation.")
                     Text("settings.ui.retry_failed.help")
                     Text("settings.ui.progress.help")
                 }
