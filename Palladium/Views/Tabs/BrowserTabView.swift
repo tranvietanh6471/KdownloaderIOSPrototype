@@ -28,12 +28,12 @@ struct BrowserTabView: View {
                     )
                     .ignoresSafeArea(edges: .bottom)
 
-                    if !detectedVideoURL.isEmpty {
+                    if !browserDownloadURL.isEmpty {
                         HStack(spacing: 10) {
                             Image(systemName: "video.fill")
                                 .font(.system(size: 16, weight: .semibold))
 
-                            Text(detectedVideoLabel)
+                            Text(browserDownloadLabel)
                                 .font(.footnote.weight(.semibold))
                                 .lineLimit(1)
                                 .truncationMode(.middle)
@@ -51,13 +51,13 @@ struct BrowserTabView: View {
                             }
 
                             Button {
-                                onDownloadURL(detectedVideoURL, detectedTitleHint)
+                                onDownloadURL(browserDownloadURL, detectedTitleHint)
                             } label: {
                                 Label(isRunning ? "Queue" : "Download", systemImage: "arrow.down.circle.fill")
                                     .font(.footnote.weight(.bold))
                             }
                             .buttonStyle(.borderedProminent)
-                            .disabled(detectedVideoURL.isEmpty)
+                            .disabled(browserDownloadURL.isEmpty)
                         }
                         .padding(10)
                         .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 8))
@@ -67,8 +67,7 @@ struct BrowserTabView: View {
                     }
                 }
             }
-            .navigationTitle("Browser")
-            .navigationBarTitleDisplayMode(.inline)
+            .toolbar(.hidden, for: .navigationBar)
             .sheet(isPresented: $showDetectedVideos) {
                 detectedVideosSheet
             }
@@ -76,7 +75,7 @@ struct BrowserTabView: View {
     }
 
     private var browserAddressBar: some View {
-        HStack(spacing: 4) {
+        HStack(spacing: 5) {
             browserToolbarButton(systemName: "chevron.left", isEnabled: controller.canGoBack) {
                 controller.goBack()
             }
@@ -121,9 +120,19 @@ struct BrowserTabView: View {
                 controller.load("https://www.google.com")
             }
         }
+        .padding(.horizontal, 9)
+        .padding(.vertical, 7)
+        .background(
+            Color.blue.opacity(0.10),
+            in: RoundedRectangle(cornerRadius: 10)
+        )
+        .overlay {
+            RoundedRectangle(cornerRadius: 10)
+                .stroke(Color.blue.opacity(0.20), lineWidth: 1)
+        }
         .padding(.horizontal, 8)
-        .padding(.vertical, 5)
-        .background(.bar)
+        .padding(.vertical, 6)
+        .background(Color(.systemGroupedBackground))
     }
 
     private func browserToolbarButton(
@@ -133,8 +142,8 @@ struct BrowserTabView: View {
     ) -> some View {
         Button(action: action) {
             Image(systemName: systemName)
-                .font(.system(size: 9, weight: .semibold))
-                .frame(width: 13, height: 20)
+                .font(.system(size: 14, weight: .semibold))
+                .frame(width: 26, height: 30)
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -142,11 +151,36 @@ struct BrowserTabView: View {
         .opacity(isEnabled ? 1.0 : 0.35)
     }
 
-    private var detectedVideoLabel: String {
-        guard let url = URL(string: detectedVideoURL) else {
-            return detectedVideoURL
+    private var browserDownloadURL: String {
+        let pageURL = addressText.trimmingCharacters(in: .whitespacesAndNewlines)
+        if isXHamsterVideoPage(pageURL) {
+            return pageURL
         }
-        return url.lastPathComponent.isEmpty ? (url.host ?? detectedVideoURL) : url.lastPathComponent
+        return detectedVideoURL
+    }
+
+    private var browserDownloadLabel: String {
+        let downloadURL = browserDownloadURL
+        if isXHamsterVideoPage(downloadURL) {
+            return "xHamster page"
+        }
+        guard let url = URL(string: downloadURL) else {
+            return downloadURL
+        }
+        return url.lastPathComponent.isEmpty ? (url.host ?? downloadURL) : url.lastPathComponent
+    }
+
+    private func isXHamsterVideoPage(_ value: String) -> Bool {
+        guard let url = URL(string: value),
+              let rawHost = url.host?.lowercased() else {
+            return false
+        }
+        let host = rawHost.hasPrefix("www.") ? String(rawHost.dropFirst(4)) : rawHost
+        let knownHosts = ["xhamster.com", "xhamster.desi", "xhamster.xxx"]
+        guard knownHosts.contains(where: { host == $0 || host.hasSuffix(".\($0)") }) else {
+            return false
+        }
+        return url.path.lowercased().contains("/videos/")
     }
 
     private var detectedVideosSheet: some View {

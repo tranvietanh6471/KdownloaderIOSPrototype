@@ -579,8 +579,8 @@ struct DownloadTabView: View {
     }
 
     private func downloadProgressCard(_ item: DownloadProgressItem) -> some View {
-        VStack(alignment: .leading, spacing: 5) {
-            HStack(alignment: .top, spacing: 6) {
+        VStack(alignment: .leading, spacing: 3) {
+            HStack(alignment: .center, spacing: 5) {
                 Image(systemName: progressIcon(for: item.state))
                     .font(.system(size: 13, weight: .semibold))
                     .foregroundStyle(progressColor(for: item.state))
@@ -597,7 +597,7 @@ struct DownloadTabView: View {
                         .lineLimit(1)
                 }
 
-                Spacer(minLength: 6)
+                Spacer(minLength: 4)
 
                 Text(progressPercentText(for: item))
                     .font(.system(.caption2, design: .monospaced).weight(.semibold))
@@ -610,13 +610,14 @@ struct DownloadTabView: View {
                 .tint(progressColor(for: item.state))
                 .controlSize(.small)
 
-            HStack(spacing: 6) {
+            HStack(spacing: 5) {
                 progressMetric(title: "Size", value: item.sizeText ?? "-")
                 progressMetric(title: "Speed", value: item.speedText ?? "-")
                 progressMetric(title: "ETA", value: item.etaText ?? "-")
             }
         }
-        .padding(7)
+        .padding(.horizontal, 6)
+        .padding(.vertical, 5)
         .background(cardBackground)
         .clipShape(RoundedRectangle(cornerRadius: 8))
     }
@@ -658,16 +659,16 @@ struct DownloadTabView: View {
     ) -> some View {
         Button(action: action) {
             Image(systemName: systemName)
-                .font(.system(size: 9, weight: .bold))
+                .font(.system(size: 12, weight: .bold))
                 .foregroundStyle(.white)
-                .frame(width: 20, height: 20)
-                .background(tint, in: RoundedRectangle(cornerRadius: 5))
+                .frame(width: 27, height: 24)
+                .background(tint, in: RoundedRectangle(cornerRadius: 6))
         }
         .buttonStyle(.plain)
     }
 
     private func progressMetric(title: String, value: String) -> some View {
-        VStack(alignment: .leading, spacing: 2) {
+        HStack(spacing: 3) {
             Text(title)
                 .font(.caption2.weight(.semibold))
                 .foregroundStyle(.secondary)

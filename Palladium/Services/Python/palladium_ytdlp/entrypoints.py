@@ -5,6 +5,7 @@ import re
 import runpy
 import sys
 import traceback
+from urllib.parse import urlparse
 
 from .args import (
     build_preset_args,
@@ -34,6 +35,16 @@ from .shared import TRACKED_PACKAGES, TailBuffer, Tee, open_live_log_stream
 from .webkit_jsi import ensure_safe_webkit_jsi_runtime
 
 PLAYLIST_PROGRESS_PREFIX = "[palladium][playlist-progress] "
+DEFAULT_BROWSER_USER_AGENT = (
+    "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) "
+    "AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 "
+    "Mobile/15E148 Safari/604.1"
+)
+XHAMSTER_PAGE_HOSTS = (
+    "xhamster.com",
+    "xhamster.desi",
+    "xhamster.xxx",
+)
 
 
 class PlaylistProgressCollector:
@@ -354,6 +365,7 @@ def run_retry_without_thumbnails(
     download_playlist,
     output_args,
     download_behavior_args,
+    site_specific_args,
     preset_args,
     extra_args,
     bridge_adapter,
@@ -377,6 +389,7 @@ def run_retry_without_thumbnails(
         run_output_dir if run_output_dir else ".",
         *output_args,
         *retry_behavior_args,
+        *site_specific_args,
         *preset_args,
         *extra_args,
     ]
@@ -405,38 +418,83 @@ def has_generic_impersonation_arg(extra_args_text):
     return "generic:impersonate" in str(extra_args_text)
 
 
-def ensure_curl_cffi_if_needed(pip_main, install_target, extra_args_text):
-    if not has_generic_impersonation_arg(extra_args_text):
-        print("[palladium] cloudflare mode: disabled")
+def normalized_url_host(value):
+    try:
+        host = urlparse(str(value or "").strip()).hostname or ""
+    except Exception:
+        return ""
+    return host.lower().removeprefix("www.")
+
+
+def is_xhamster_page_url(value):
+    host = normalized_url_host(value)
+    if not host:
+        return False
+    return any(host == domain or host.endswith(f".{domain}") for domain in XHAMSTER_PAGE_HOSTS)
+
+
+def argv_contains_option(args, option):
+    for arg in args:
+        text = str(arg)
+        if text == option or text.startswith(f"{option}="):
+            return True
+    return False
+
+
+def build_site_specific_download_args(download_url, existing_args):
+    if not is_xhamster_page_url(download_url):
+        return [], None
+
+    args = []
+    if not argv_contains_option(existing_args, "--impersonate"):
+        args.extend(["--impersonate", "chrome"])
+    if not argv_contains_option(existing_args, "--referer"):
+        args.extend(["--referer", download_url])
+    if not argv_contains_option(existing_args, "--user-agent"):
+        args.extend(["--user-agent", DEFAULT_BROWSER_USER_AGENT])
+    return args, "xhamster"
+
+
+def requires_impersonation_support(extra_args_text, download_url):
+    return has_generic_impersonation_arg(extra_args_text) or is_xhamster_page_url(download_url)
+
+
+def ensure_curl_cffi_if_needed(pip_main, install_target, extra_args_text, download_url=None):
+    if not requires_impersonation_support(extra_args_text, download_url):
+        print("[palladium] cloudflare/site impersonation: disabled")
         return False, False, None
 
-    print("[palladium] cloudflare mode: enabled (generic impersonation)")
+    if is_xhamster_page_url(download_url):
+        print("[palladium] site profile enabled: xhamster browser impersonation")
+    elif has_generic_impersonation_arg(extra_args_text):
+        print("[palladium] cloudflare mode: enabled (generic impersonation)")
+
     try:
         import curl_cffi  # noqa: F401
-        print("[palladium] cloudflare mode dependency ready: curl_cffi")
+        print("[palladium] impersonation dependency ready: curl_cffi")
         return True, False, 0
     except Exception as import_error:
-        print(f"[palladium] cloudflare mode dependency missing: curl_cffi ({import_error})")
+        print(f"[palladium] impersonation dependency missing: curl_cffi ({import_error})")
 
     if pip_main is None:
-        print("[palladium] cloudflare mode dependency install skipped: pip unavailable")
+        print("[palladium] impersonation dependency install skipped: pip unavailable")
         return True, False, 1
 
     try:
         pip_args = ["install", "--disable-pip-version-check", "--no-cache-dir", "--progress-bar", "off", "--no-color", "curl_cffi"]
         if install_target:
             pip_args[1:1] = ["--target", install_target]
-        print("[palladium] installing cloudflare mode dependency: curl_cffi")
+        print("[palladium] installing impersonation dependency: curl_cffi")
         pip_result = pip_main(pip_args)
         pip_exit_code = 0 if pip_result is None else int(pip_result)
-        print(f"[palladium] cloudflare mode dependency pip exit code: {pip_exit_code}")
+        print(f"[palladium] impersonation dependency pip exit code: {pip_exit_code}")
         if pip_exit_code != 0:
             return True, True, pip_exit_code
         import curl_cffi  # noqa: F401
-        print("[palladium] cloudflare mode dependency ready after install: curl_cffi")
+        print("[palladium] impersonation dependency ready after install: curl_cffi")
         return True, True, pip_exit_code
     except Exception:
-        print("[palladium] cloudflare mode dependency install failed")
+        print("[palladium] impersonation dependency install failed")
         traceback.print_exc()
         return True, True, 1
 
@@ -627,6 +685,7 @@ def run_yt_dlp_flow(
                 pip_main_for_cloudflare,
                 install_target,
                 extra_args_text,
+                download_url,
             )
             if curl_cffi_install_attempted:
                 pip_attempted = True
@@ -722,6 +781,18 @@ def run_yt_dlp_flow(
                             else:
                                 print(f"[palladium] cookie file missing, ignoring: {cookie_file_path}")
 
+                        existing_args = [
+                            *download_behavior_args,
+                            *preset_args,
+                            *extra_args,
+                        ]
+                        site_specific_args, site_profile_name = build_site_specific_download_args(
+                            download_url,
+                            existing_args,
+                        )
+                        if site_profile_name:
+                            print(f"[palladium] site profile args applied: {site_profile_name}")
+
                         sys.argv = [
                             "yt-dlp",
                             "-v",
@@ -741,6 +812,7 @@ def run_yt_dlp_flow(
                             run_output_dir if run_output_dir else ".",
                             *output_args,
                             *download_behavior_args,
+                            *site_specific_args,
                             *preset_args,
                             *extra_args,
                             download_url,
@@ -788,6 +860,7 @@ def run_yt_dlp_flow(
                                     download_playlist=download_playlist,
                                     output_args=output_args,
                                     download_behavior_args=download_behavior_args,
+                                    site_specific_args=site_specific_args,
                                     preset_args=preset_args,
                                     extra_args=extra_args,
                                     bridge_adapter=bridge_adapter,
