@@ -258,8 +258,10 @@ def matches_distribution_entry(entry_stem, package_name):
     safe_name = wheel_safe_package_name(package_name)
     return (
         normalized_stem == normalized_name
+        or normalized_stem.startswith(f"{normalized_name}-")
         or safe_stem == safe_name
         or safe_stem.startswith(f"{safe_name}-")
+        or safe_stem.startswith(f"{safe_name}_")
     )
 
 
@@ -280,6 +282,8 @@ def cleanup_target_package(install_target, package_name):
             should_remove = False
 
             if lower_entry in {import_name, f"{import_name}.py"}:
+                should_remove = True
+            elif lower_entry == f"{import_name}.libs":
                 should_remove = True
             elif lower_entry.endswith(".dist-info"):
                 stem = lower_entry[:-10]

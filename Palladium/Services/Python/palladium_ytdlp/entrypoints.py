@@ -1071,6 +1071,13 @@ def package_version_at_least(current, minimum):
     return current_tuple + (0,) * (width - len(current_tuple)) >= minimum_tuple + (0,) * (width - len(minimum_tuple))
 
 
+def unload_imported_modules(module_name):
+    prefix = f"{module_name}."
+    for name in list(sys.modules.keys()):
+        if name == module_name or name.startswith(prefix):
+            sys.modules.pop(name, None)
+
+
 def ensure_curl_cffi_if_needed(pip_main, install_target, extra_args_text, download_url=None):
     if not requires_impersonation_support(extra_args_text, download_url):
         print("[palladium] cloudflare/site impersonation: disabled")
@@ -1092,12 +1099,17 @@ def ensure_curl_cffi_if_needed(pip_main, install_target, extra_args_text, downlo
         return True, False, 0
     except Exception as import_error:
         print(f"[palladium] impersonation dependency missing: curl_cffi ({import_error})")
+        unload_imported_modules("curl_cffi")
 
     if pip_main is None:
         print("[palladium] impersonation dependency install skipped: pip unavailable")
         return True, False, 1
 
     try:
+        removed = cleanup_target_package(install_target, "curl_cffi")
+        if removed:
+            print(f"[palladium] removed stale curl_cffi target entries: {removed}")
+        unload_imported_modules("curl_cffi")
         pip_args = [
             "install",
             "--upgrade",

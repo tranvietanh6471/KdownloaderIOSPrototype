@@ -1,5 +1,9 @@
 # Palladium Changelog
 
+## v1.0.7
+
+- Cleans up stale curl_cffi installs and unloads old modules before reinstalling Cloudflare impersonation support.
+
 ## v1.0.6
 
 - Fixed supported-site detection in Browser by sending page URLs directly from the WebView detector.
