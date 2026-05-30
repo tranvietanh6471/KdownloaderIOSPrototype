@@ -283,6 +283,9 @@ extension ContentView {
         let presetAtStartValue = resumeContext?.preset ?? presetOverride ?? selectedPreset
         let presetAtStart = presetAtStartValue.pythonValue
         let extraArgsAtStart = resolvedExtraArgsTextForDownload()
+        if cloudflareModeEnabled {
+            appendConsoleText("[palladium] cloudflare mode enabled: using generic impersonation\n")
+        }
         let outputTitleHintAtStart = (resumeContext?.outputTitleHint ?? outputTitleHint)?.trimmingCharacters(in: .whitespacesAndNewlines)
         let presetArgsJSONAtStart = buildPresetArgumentsJSON()
         let selectedAfterDownloadBehavior = resumeContext?.afterDownloadBehavior ?? afterDownloadOverride ?? afterDownloadBehavior

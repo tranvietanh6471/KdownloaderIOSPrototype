@@ -399,6 +399,48 @@ def run_retry_without_thumbnails(
         return False, extract_last_error_line(traceback.format_exc()) or "ERROR: retry without thumbnails failed"
 
 
+def has_generic_impersonation_arg(extra_args_text):
+    if not extra_args_text:
+        return False
+    return "generic:impersonate" in str(extra_args_text)
+
+
+def ensure_curl_cffi_if_needed(pip_main, install_target, extra_args_text):
+    if not has_generic_impersonation_arg(extra_args_text):
+        print("[palladium] cloudflare mode: disabled")
+        return False, False, None
+
+    print("[palladium] cloudflare mode: enabled (generic impersonation)")
+    try:
+        import curl_cffi  # noqa: F401
+        print("[palladium] cloudflare mode dependency ready: curl_cffi")
+        return True, False, 0
+    except Exception as import_error:
+        print(f"[palladium] cloudflare mode dependency missing: curl_cffi ({import_error})")
+
+    if pip_main is None:
+        print("[palladium] cloudflare mode dependency install skipped: pip unavailable")
+        return True, False, 1
+
+    try:
+        pip_args = ["install", "--disable-pip-version-check", "--no-cache-dir", "--progress-bar", "off", "--no-color", "curl_cffi"]
+        if install_target:
+            pip_args[1:1] = ["--target", install_target]
+        print("[palladium] installing cloudflare mode dependency: curl_cffi")
+        pip_result = pip_main(pip_args)
+        pip_exit_code = 0 if pip_result is None else int(pip_result)
+        print(f"[palladium] cloudflare mode dependency pip exit code: {pip_exit_code}")
+        if pip_exit_code != 0:
+            return True, True, pip_exit_code
+        import curl_cffi  # noqa: F401
+        print("[palladium] cloudflare mode dependency ready after install: curl_cffi")
+        return True, True, pip_exit_code
+    except Exception:
+        print("[palladium] cloudflare mode dependency install failed")
+        traceback.print_exc()
+        return True, True, 1
+
+
 def run_yt_dlp_flow(
     download_url_override=None,
     download_preset_override=None,
@@ -579,6 +621,16 @@ def run_yt_dlp_flow(
                     "[palladium] yt-dlp-apple-webkit-jsi after install: "
                     f"{installed_versions.get('yt-dlp-apple-webkit-jsi', 'not installed')}"
                 )
+
+            pip_main_for_cloudflare = ensure_pip_entrypoint(install_target)
+            cloudflare_enabled, curl_cffi_install_attempted, curl_cffi_pip_exit_code = ensure_curl_cffi_if_needed(
+                pip_main_for_cloudflare,
+                install_target,
+                extra_args_text,
+            )
+            if curl_cffi_install_attempted:
+                pip_attempted = True
+                pip_exit_code = curl_cffi_pip_exit_code
 
             raise_if_cancel_requested(cancel_file_path, "[palladium] cancellation requested before webkit patch")
             ensure_safe_webkit_jsi_runtime(install_target)

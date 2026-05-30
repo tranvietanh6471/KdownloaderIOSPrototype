@@ -74,8 +74,8 @@ struct BrowserTabView: View {
                         controller.goBack()
                     } label: {
                         Image(systemName: "chevron.left")
-                            .font(.system(size: 12, weight: .semibold))
-                            .frame(width: 24, height: 24)
+                            .font(.system(size: 9, weight: .semibold))
+                            .frame(width: 14, height: 20)
                     }
                     .buttonStyle(.plain)
                     .disabled(!controller.canGoBack)
@@ -84,8 +84,8 @@ struct BrowserTabView: View {
                         controller.goForward()
                     } label: {
                         Image(systemName: "chevron.right")
-                            .font(.system(size: 12, weight: .semibold))
-                            .frame(width: 24, height: 24)
+                            .font(.system(size: 9, weight: .semibold))
+                            .frame(width: 14, height: 20)
                     }
                     .buttonStyle(.plain)
                     .disabled(!controller.canGoForward)
@@ -126,8 +126,8 @@ struct BrowserTabView: View {
                         controller.reload()
                     } label: {
                         Image(systemName: "arrow.clockwise")
-                            .font(.system(size: 12, weight: .semibold))
-                            .frame(width: 24, height: 24)
+                            .font(.system(size: 9, weight: .semibold))
+                            .frame(width: 14, height: 20)
                     }
                     .buttonStyle(.plain)
 
@@ -135,8 +135,8 @@ struct BrowserTabView: View {
                         controller.load("https://www.google.com")
                     } label: {
                         Image(systemName: "house")
-                            .font(.system(size: 12, weight: .semibold))
-                            .frame(width: 24, height: 24)
+                            .font(.system(size: 9, weight: .semibold))
+                            .frame(width: 14, height: 20)
                     }
                     .buttonStyle(.plain)
                 }
