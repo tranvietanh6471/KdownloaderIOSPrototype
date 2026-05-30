@@ -126,7 +126,12 @@ jobs:
         set -euo pipefail
         BUILD_REF=$(git tag --points-at HEAD --sort=-v:refname | head -n 1)
         if [ -z "$BUILD_REF" ]; then
-          BUILD_REF=$(git rev-parse --short HEAD)
+          APP_VERSION=$(grep -m 1 'APP_VERSION = ' Palladium.xcodeproj/project.pbxproj | sed -E 's/.*APP_VERSION = ([^;]+);.*/\1/')
+          if [ -n "$APP_VERSION" ]; then
+            BUILD_REF="v${APP_VERSION}"
+          else
+            BUILD_REF=$(git rev-parse --short HEAD)
+          fi
         fi
         echo "build_ref=${BUILD_REF}" >> "$GITHUB_OUTPUT"
         echo "Build ref: ${BUILD_REF}"
