@@ -1,5 +1,4 @@
 import SwiftUI
-import UIKit
 
 struct DownloadTabView: View {
     @Environment(\.colorScheme) private var colorScheme
@@ -23,9 +22,9 @@ struct DownloadTabView: View {
     let playlistProgress: PlaylistProgressSnapshot?
     let downloadErrorText: String?
     let onDownload: () -> Void
-    let onPause: () -> Void
-    let onResume: () -> Void
-    let onCancel: () -> Void
+    let onPauseItem: (UUID) -> Void
+    let onResumeItem: (UUID) -> Void
+    let onCancelItem: (UUID) -> Void
     let onPastedURL: (String) -> Void
     let linkHistoryEnabled: Bool
     let historyEntries: [LinkHistoryEntry]
@@ -92,7 +91,7 @@ struct DownloadTabView: View {
                             playlistProgressCard(playlistProgress)
                         }
 
-                        if isRunning || isPaused {
+                        if (isRunning || isPaused) && downloadProgressItems.isEmpty {
                             compactDownloadStatusBar
                         }
 
@@ -156,14 +155,13 @@ struct DownloadTabView: View {
         }
     }
 
-    private func pasteOrClearURL() {
-        if urlText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            if let paste = UIPasteboard.general.string?.trimmingCharacters(in: .whitespacesAndNewlines), !paste.isEmpty {
-                urlText = paste
-                onPastedURL(paste)
-            }
-            return
-        }
+    private func handlePastedStrings(_ strings: [String]) {
+        guard let paste = strings.first?.trimmingCharacters(in: .whitespacesAndNewlines), !paste.isEmpty else { return }
+        urlText = paste
+        onPastedURL(paste)
+    }
+
+    private func clearURL() {
         urlText = ""
     }
 
@@ -205,14 +203,7 @@ struct DownloadTabView: View {
                     .background(cardElementBackground)
                     .clipShape(RoundedRectangle(cornerRadius: 7))
 
-                Button(action: pasteOrClearURL) {
-                    Image(systemName: urlText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "doc.on.clipboard" : "xmark.circle.fill")
-                        .font(.system(size: 15, weight: .semibold))
-                        .frame(width: 34, height: 34)
-                        .background(cardElementBackground)
-                        .clipShape(RoundedRectangle(cornerRadius: 7))
-                }
-                .buttonStyle(.plain)
+                pasteOrClearURLButton
 
                 Button(action: {
                     if showDownloadOptions {
@@ -271,6 +262,28 @@ struct DownloadTabView: View {
         .clipShape(RoundedRectangle(cornerRadius: 10))
     }
 
+    @ViewBuilder
+    private var pasteOrClearURLButton: some View {
+        if urlText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            PasteButton(payloadType: String.self) { strings in
+                handlePastedStrings(strings)
+            }
+            .labelStyle(.iconOnly)
+            .buttonBorderShape(.roundedRectangle(radius: 7))
+            .frame(width: 34, height: 34)
+            .disabled(isRunning || isPaused)
+        } else {
+            Button(action: clearURL) {
+                Image(systemName: "xmark.circle.fill")
+                    .font(.system(size: 15, weight: .semibold))
+                    .frame(width: 34, height: 34)
+                    .background(cardElementBackground)
+                    .clipShape(RoundedRectangle(cornerRadius: 7))
+            }
+            .buttonStyle(.plain)
+        }
+    }
+
     private var compactDownloadStatusBar: some View {
         HStack(spacing: 8) {
             if isRunning {
@@ -285,7 +298,11 @@ struct DownloadTabView: View {
             Spacer(minLength: 8)
 
             if isRunning {
-                Button(action: onPause) {
+                Button {
+                    if let runningItem = downloadProgressItems.first(where: { $0.state == .running || $0.state == .processing }) {
+                        onPauseItem(runningItem.id)
+                    }
+                } label: {
                     Image(systemName: "pause.fill")
                         .font(.caption.weight(.bold))
                         .frame(width: 28, height: 28)
@@ -294,7 +311,11 @@ struct DownloadTabView: View {
                 .controlSize(.small)
                 .tint(.orange)
 
-                Button(action: onCancel) {
+                Button {
+                    if let runningItem = downloadProgressItems.first(where: { $0.state == .running || $0.state == .processing }) {
+                        onCancelItem(runningItem.id)
+                    }
+                } label: {
                     Image(systemName: "xmark")
                         .font(.caption.weight(.bold))
                         .frame(width: 28, height: 28)
@@ -303,7 +324,11 @@ struct DownloadTabView: View {
                 .controlSize(.small)
                 .tint(.red)
             } else if isPaused {
-                Button(action: onResume) {
+                Button {
+                    if let pausedItem = downloadProgressItems.first(where: { $0.state == .paused }) {
+                        onResumeItem(pausedItem.id)
+                    }
+                } label: {
                     Image(systemName: "play.fill")
                         .font(.caption.weight(.bold))
                         .frame(width: 28, height: 28)
@@ -312,7 +337,11 @@ struct DownloadTabView: View {
                 .controlSize(.small)
                 .tint(.blue)
 
-                Button(action: onCancel) {
+                Button {
+                    if let pausedItem = downloadProgressItems.first(where: { $0.state == .paused }) {
+                        onCancelItem(pausedItem.id)
+                    }
+                } label: {
                     Image(systemName: "xmark")
                         .font(.caption.weight(.bold))
                         .frame(width: 28, height: 28)
@@ -573,6 +602,8 @@ struct DownloadTabView: View {
                 Text(progressPercentText(for: item))
                     .font(.system(.caption2, design: .monospaced).weight(.semibold))
                     .foregroundStyle(primaryTextColor)
+
+                downloadProgressCardControls(for: item)
             }
 
             ProgressView(value: min(max(item.percent ?? 0, 0), 100), total: 100)
@@ -588,6 +619,51 @@ struct DownloadTabView: View {
         .padding(7)
         .background(cardBackground)
         .clipShape(RoundedRectangle(cornerRadius: 8))
+    }
+
+    @ViewBuilder
+    private func downloadProgressCardControls(for item: DownloadProgressItem) -> some View {
+        HStack(spacing: 4) {
+            switch item.state {
+            case .running, .processing:
+                downloadProgressIconButton(systemName: "pause.fill", tint: .orange) {
+                    onPauseItem(item.id)
+                }
+                downloadProgressIconButton(systemName: "xmark", tint: .red) {
+                    onCancelItem(item.id)
+                }
+            case .paused:
+                downloadProgressIconButton(systemName: "play.fill", tint: .blue) {
+                    onResumeItem(item.id)
+                }
+                downloadProgressIconButton(systemName: "xmark", tint: .red) {
+                    onCancelItem(item.id)
+                }
+            case .queued:
+                downloadProgressIconButton(systemName: "xmark", tint: .red) {
+                    onCancelItem(item.id)
+                }
+            case .completed, .failed, .cancelled:
+                downloadProgressIconButton(systemName: "xmark", tint: .secondary) {
+                    onCancelItem(item.id)
+                }
+            }
+        }
+    }
+
+    private func downloadProgressIconButton(
+        systemName: String,
+        tint: Color,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            Image(systemName: systemName)
+                .font(.system(size: 9, weight: .bold))
+                .foregroundStyle(.white)
+                .frame(width: 20, height: 20)
+                .background(tint, in: RoundedRectangle(cornerRadius: 5))
+        }
+        .buttonStyle(.plain)
     }
 
     private func progressMetric(title: String, value: String) -> some View {

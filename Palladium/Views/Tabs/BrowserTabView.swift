@@ -15,52 +15,56 @@ struct BrowserTabView: View {
 
     var body: some View {
         NavigationStack {
-            ZStack(alignment: .bottom) {
-                BrowserWebView(
-                    controller: controller,
-                    detectedVideoURL: $detectedVideoURL,
-                    detectedTitleHint: $detectedTitleHint,
-                    detectedVideos: $detectedVideos,
-                    addressText: $addressText
-                )
-                .ignoresSafeArea(edges: .bottom)
+            VStack(spacing: 0) {
+                browserAddressBar
 
-                if !detectedVideoURL.isEmpty {
-                    HStack(spacing: 10) {
-                        Image(systemName: "video.fill")
-                            .font(.system(size: 16, weight: .semibold))
+                ZStack(alignment: .bottom) {
+                    BrowserWebView(
+                        controller: controller,
+                        detectedVideoURL: $detectedVideoURL,
+                        detectedTitleHint: $detectedTitleHint,
+                        detectedVideos: $detectedVideos,
+                        addressText: $addressText
+                    )
+                    .ignoresSafeArea(edges: .bottom)
 
-                        Text(detectedVideoLabel)
-                            .font(.footnote.weight(.semibold))
-                            .lineLimit(1)
-                            .truncationMode(.middle)
+                    if !detectedVideoURL.isEmpty {
+                        HStack(spacing: 10) {
+                            Image(systemName: "video.fill")
+                                .font(.system(size: 16, weight: .semibold))
 
-                        Spacer(minLength: 8)
+                            Text(detectedVideoLabel)
+                                .font(.footnote.weight(.semibold))
+                                .lineLimit(1)
+                                .truncationMode(.middle)
 
-                        if detectedVideos.count > 1 {
+                            Spacer(minLength: 8)
+
+                            if detectedVideos.count > 1 {
+                                Button {
+                                    showDetectedVideos = true
+                                } label: {
+                                    Image(systemName: "list.bullet")
+                                        .font(.footnote.weight(.bold))
+                                }
+                                .buttonStyle(.bordered)
+                            }
+
                             Button {
-                                showDetectedVideos = true
+                                onDownloadURL(detectedVideoURL, detectedTitleHint)
                             } label: {
-                                Image(systemName: "list.bullet")
+                                Label(isRunning ? "Queue" : "Download", systemImage: "arrow.down.circle.fill")
                                     .font(.footnote.weight(.bold))
                             }
-                            .buttonStyle(.bordered)
+                            .buttonStyle(.borderedProminent)
+                            .disabled(detectedVideoURL.isEmpty)
                         }
-
-                        Button {
-                            onDownloadURL(detectedVideoURL, detectedTitleHint)
-                        } label: {
-                            Label(isRunning ? "Queue" : "Download", systemImage: "arrow.down.circle.fill")
-                                .font(.footnote.weight(.bold))
-                        }
-                        .buttonStyle(.borderedProminent)
-                        .disabled(detectedVideoURL.isEmpty)
+                        .padding(10)
+                        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 8))
+                        .shadow(radius: 8)
+                        .padding(.horizontal, 12)
+                        .padding(.bottom, 12)
                     }
-                    .padding(10)
-                    .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 8))
-                    .shadow(radius: 8)
-                    .padding(.horizontal, 12)
-                    .padding(.bottom, 12)
                 }
             }
             .navigationTitle("Browser")
@@ -68,80 +72,74 @@ struct BrowserTabView: View {
             .sheet(isPresented: $showDetectedVideos) {
                 detectedVideosSheet
             }
-            .toolbar {
-                ToolbarItemGroup(placement: .topBarLeading) {
+        }
+    }
+
+    private var browserAddressBar: some View {
+        HStack(spacing: 4) {
+            browserToolbarButton(systemName: "chevron.left", isEnabled: controller.canGoBack) {
+                controller.goBack()
+            }
+
+            browserToolbarButton(systemName: "chevron.right", isEnabled: controller.canGoForward) {
+                controller.goForward()
+            }
+
+            HStack(spacing: 5) {
+                TextField("Search or URL", text: $addressText)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+                    .keyboardType(.URL)
+                    .font(.footnote)
+                    .onSubmit {
+                        controller.load(addressText)
+                    }
+
+                if !addressText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                     Button {
-                        controller.goBack()
+                        addressText = ""
                     } label: {
-                        Image(systemName: "chevron.left")
-                            .font(.system(size: 9, weight: .semibold))
-                            .frame(width: 14, height: 20)
+                        Image(systemName: "xmark.circle.fill")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .frame(width: 18, height: 18)
                     }
                     .buttonStyle(.plain)
-                    .disabled(!controller.canGoBack)
-
-                    Button {
-                        controller.goForward()
-                    } label: {
-                        Image(systemName: "chevron.right")
-                            .font(.system(size: 9, weight: .semibold))
-                            .frame(width: 14, height: 20)
-                    }
-                    .buttonStyle(.plain)
-                    .disabled(!controller.canGoForward)
-                }
-
-                ToolbarItem(placement: .principal) {
-                    HStack(spacing: 5) {
-                        TextField("Search or URL", text: $addressText)
-                            .textInputAutocapitalization(.never)
-                            .autocorrectionDisabled()
-                            .keyboardType(.URL)
-                            .font(.footnote)
-                            .onSubmit {
-                                controller.load(addressText)
-                            }
-
-                        if !addressText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                            Button {
-                                addressText = ""
-                            } label: {
-                                Image(systemName: "xmark.circle.fill")
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                                    .frame(width: 18, height: 18)
-                            }
-                            .buttonStyle(.plain)
-                            .accessibilityLabel("Clear URL")
-                        }
-                    }
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 5)
-                    .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 7))
-                    .frame(minWidth: 220, maxWidth: 520)
-                }
-
-                ToolbarItemGroup(placement: .topBarTrailing) {
-                    Button {
-                        controller.reload()
-                    } label: {
-                        Image(systemName: "arrow.clockwise")
-                            .font(.system(size: 9, weight: .semibold))
-                            .frame(width: 14, height: 20)
-                    }
-                    .buttonStyle(.plain)
-
-                    Button {
-                        controller.load("https://www.google.com")
-                    } label: {
-                        Image(systemName: "house")
-                            .font(.system(size: 9, weight: .semibold))
-                            .frame(width: 14, height: 20)
-                    }
-                    .buttonStyle(.plain)
+                    .accessibilityLabel("Clear URL")
                 }
             }
+            .padding(.horizontal, 8)
+            .padding(.vertical, 5)
+            .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 7))
+            .frame(minWidth: 220, maxWidth: 520)
+
+            browserToolbarButton(systemName: "arrow.clockwise") {
+                controller.reload()
+            }
+
+            browserToolbarButton(systemName: "house") {
+                controller.load("https://www.google.com")
+            }
         }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 5)
+        .background(.bar)
+    }
+
+    private func browserToolbarButton(
+        systemName: String,
+        isEnabled: Bool = true,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            Image(systemName: systemName)
+                .font(.system(size: 9, weight: .semibold))
+                .frame(width: 13, height: 20)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .disabled(!isEnabled)
+        .opacity(isEnabled ? 1.0 : 0.35)
     }
 
     private var detectedVideoLabel: String {

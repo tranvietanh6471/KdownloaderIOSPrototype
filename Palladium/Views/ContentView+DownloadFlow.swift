@@ -645,6 +645,33 @@ extension ContentView {
         progressText = String(localized: "download.status.cancelling")
     }
 
+    func pauseDownloadProgressItem(_ id: UUID) {
+        guard activeDownloadProgressItemID == id else { return }
+        pauseDownloadFlow()
+    }
+
+    func resumeDownloadProgressItem(_ id: UUID) {
+        guard activeDownloadProgressItemID == id else { return }
+        resumeDownloadFlow()
+    }
+
+    func cancelDownloadProgressItem(_ id: UUID) {
+        if let queuedIndex = queuedDownloadRequests.firstIndex(where: { $0.progressItemID == id }) {
+            queuedDownloadRequests.remove(at: queuedIndex)
+            downloadProgressItems.removeAll { $0.id == id }
+            persistDownloadSessionState()
+            return
+        }
+
+        guard activeDownloadProgressItemID == id else {
+            downloadProgressItems.removeAll { $0.id == id }
+            persistDownloadSessionState()
+            return
+        }
+
+        cancelDownloadFlow()
+    }
+
     func pauseDownloadFlow() {
         guard isRunning else { return }
         downloadPauseRequested = true
