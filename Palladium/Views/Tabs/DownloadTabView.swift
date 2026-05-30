@@ -203,7 +203,7 @@ struct DownloadTabView: View {
                     .background(cardElementBackground)
                     .clipShape(RoundedRectangle(cornerRadius: 7))
 
-                pasteOrClearURLButton
+                urlUtilityButtons
 
                 Button(action: {
                     if showDownloadOptions {
@@ -263,24 +263,26 @@ struct DownloadTabView: View {
     }
 
     @ViewBuilder
-    private var pasteOrClearURLButton: some View {
-        if urlText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+    private var urlUtilityButtons: some View {
+        HStack(spacing: 4) {
+            if !urlText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                Button(action: clearURL) {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.system(size: 15, weight: .semibold))
+                        .frame(width: 30, height: 34)
+                        .background(cardElementBackground)
+                        .clipShape(RoundedRectangle(cornerRadius: 7))
+                }
+                .buttonStyle(.plain)
+            }
+
             PasteButton(payloadType: String.self) { strings in
                 handlePastedStrings(strings)
             }
             .labelStyle(.iconOnly)
             .buttonBorderShape(.roundedRectangle(radius: 7))
-            .frame(width: 34, height: 34)
+            .frame(width: 30, height: 34)
             .disabled(isRunning || isPaused)
-        } else {
-            Button(action: clearURL) {
-                Image(systemName: "xmark.circle.fill")
-                    .font(.system(size: 15, weight: .semibold))
-                    .frame(width: 34, height: 34)
-                    .background(cardElementBackground)
-                    .clipShape(RoundedRectangle(cornerRadius: 7))
-            }
-            .buttonStyle(.plain)
         }
     }
 
@@ -644,8 +646,12 @@ struct DownloadTabView: View {
                 downloadProgressIconButton(systemName: "xmark", tint: .red) {
                     onCancelItem(item.id)
                 }
-            case .completed, .failed, .cancelled:
+            case .completed:
                 downloadProgressIconButton(systemName: "xmark", tint: .secondary) {
+                    onCancelItem(item.id)
+                }
+            case .failed, .cancelled:
+                downloadProgressIconButton(systemName: "xmark", tint: .red) {
                     onCancelItem(item.id)
                 }
             }

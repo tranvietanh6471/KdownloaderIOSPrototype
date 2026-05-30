@@ -656,6 +656,17 @@ extension ContentView {
     }
 
     func cancelDownloadProgressItem(_ id: UUID) {
+        if let item = downloadProgressItems.first(where: { $0.id == id }),
+           item.state == .completed || item.state == .failed || item.state == .cancelled {
+            downloadProgressItems.removeAll { $0.id == id }
+            if activeDownloadProgressItemID == id {
+                activeDownloadProgressItemID = nil
+                activeDownloadContext = nil
+            }
+            persistDownloadSessionState()
+            return
+        }
+
         if let queuedIndex = queuedDownloadRequests.firstIndex(where: { $0.progressItemID == id }) {
             queuedDownloadRequests.remove(at: queuedIndex)
             downloadProgressItems.removeAll { $0.id == id }

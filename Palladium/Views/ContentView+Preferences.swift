@@ -132,6 +132,12 @@ extension ContentView {
            let behavior = AfterDownloadBehavior(rawValue: rawValue) {
             return behavior
         }
+        let hasLegacyAfterDownloadPreference =
+            UserDefaults.standard.object(forKey: askUserAfterDownloadDefaultsKey) != nil
+            || UserDefaults.standard.object(forKey: selectedPostDownloadActionDefaultsKey) != nil
+        guard hasLegacyAfterDownloadPreference else {
+            return .saveToApplicationFolder
+        }
         if loadAskUserAfterDownloadLegacy() {
             return .ask
         }

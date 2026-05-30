@@ -131,7 +131,8 @@ struct BrowserTabView: View {
                 .stroke(Color.blue.opacity(0.20), lineWidth: 1)
         }
         .padding(.horizontal, 8)
-        .padding(.vertical, 6)
+        .padding(.top, 6)
+        .padding(.bottom, 2)
         .background(Color(.systemGroupedBackground))
     }
 
@@ -153,7 +154,7 @@ struct BrowserTabView: View {
 
     private var browserDownloadURL: String {
         let pageURL = addressText.trimmingCharacters(in: .whitespacesAndNewlines)
-        if isXHamsterVideoPage(pageURL) {
+        if isYouTubeVideoPage(pageURL) || isXHamsterVideoPage(pageURL) || isGenz3XVideoPage(pageURL) || isSextop1VideoPage(pageURL) || isAvpleVideoPage(pageURL) || isKubHDVideoPage(pageURL) || isAnime108VideoPage(pageURL) {
             return pageURL
         }
         return detectedVideoURL
@@ -161,13 +162,55 @@ struct BrowserTabView: View {
 
     private var browserDownloadLabel: String {
         let downloadURL = browserDownloadURL
+        if isYouTubeVideoPage(downloadURL) {
+            return "YouTube page"
+        }
         if isXHamsterVideoPage(downloadURL) {
             return "xHamster page"
+        }
+        if isGenz3XVideoPage(downloadURL) {
+            return "Genz3X page"
+        }
+        if isSextop1VideoPage(downloadURL) {
+            return "Sextop1 page"
+        }
+        if isAvpleVideoPage(downloadURL) {
+            return "Avple page"
+        }
+        if isKubHDVideoPage(downloadURL) {
+            return "KUBHD page"
+        }
+        if isAnime108VideoPage(downloadURL) {
+            return "Anime108 page"
         }
         guard let url = URL(string: downloadURL) else {
             return downloadURL
         }
         return url.lastPathComponent.isEmpty ? (url.host ?? downloadURL) : url.lastPathComponent
+    }
+
+    private func isYouTubeVideoPage(_ value: String) -> Bool {
+        guard let url = URL(string: value),
+              let rawHost = url.host?.lowercased() else {
+            return false
+        }
+        let host = rawHost.hasPrefix("www.") ? String(rawHost.dropFirst(4)) : rawHost
+        if host == "youtu.be" {
+            return url.pathComponents.filter { $0 != "/" }.isEmpty == false
+        }
+        guard host == "youtube.com" || host == "m.youtube.com" || host == "music.youtube.com" else {
+            return false
+        }
+        let components = url.pathComponents.filter { $0 != "/" }
+        if components.first == "watch" {
+            return URLComponents(url: url, resolvingAgainstBaseURL: false)?
+                .queryItems?
+                .contains(where: { $0.name == "v" && ($0.value?.isEmpty == false) }) == true
+        }
+        if let first = components.first, ["shorts", "live", "embed"].contains(first) {
+            return components.count >= 2
+        }
+        return false
     }
 
     private func isXHamsterVideoPage(_ value: String) -> Bool {
@@ -181,6 +224,84 @@ struct BrowserTabView: View {
             return false
         }
         return url.path.lowercased().contains("/videos/")
+    }
+
+    private func isGenz3XVideoPage(_ value: String) -> Bool {
+        guard let url = URL(string: value),
+              let rawHost = url.host?.lowercased() else {
+            return false
+        }
+        let host = rawHost.hasPrefix("www.") ? String(rawHost.dropFirst(4)) : rawHost
+        let knownHosts = ["genz3x.com", "clipphimsex3x.net", "clipsexsub3x.net"]
+        guard knownHosts.contains(where: { host == $0 || host.hasSuffix(".\($0)") }) else {
+            return false
+        }
+        let components = url.pathComponents.filter { $0 != "/" }
+        guard components.count >= 2 else { return false }
+        return Int(components.last ?? "") != nil
+    }
+
+    private func isSextop1VideoPage(_ value: String) -> Bool {
+        guard let url = URL(string: value),
+              let rawHost = url.host?.lowercased() else {
+            return false
+        }
+        let host = rawHost.hasPrefix("www.") ? String(rawHost.dropFirst(4)) : rawHost
+        guard host == "sextop1.cl" || host.hasSuffix(".sextop1.cl") else {
+            return false
+        }
+        let components = url.pathComponents.filter { $0 != "/" }
+        return components.count == 1 && !components[0].isEmpty
+    }
+
+    private func isAvpleVideoPage(_ value: String) -> Bool {
+        guard let url = URL(string: value),
+              let rawHost = url.host?.lowercased() else {
+            return false
+        }
+        let host = rawHost.hasPrefix("www.") ? String(rawHost.dropFirst(4)) : rawHost
+        guard host == "avple.tv" || host.hasSuffix(".avple.tv") else {
+            return false
+        }
+        let components = url.pathComponents.filter { $0 != "/" }
+        return components.count == 2 && components[0] == "video" && !components[1].isEmpty
+    }
+
+    private func isKubHDVideoPage(_ value: String) -> Bool {
+        guard let url = URL(string: value),
+              let rawHost = url.host?.lowercased() else {
+            return false
+        }
+        let host = rawHost.hasPrefix("www.") ? String(rawHost.dropFirst(4)) : rawHost
+        guard host == "kubhd24.net" || host.hasSuffix(".kubhd24.net") else {
+            return false
+        }
+        let components = url.pathComponents.filter { $0 != "/" }
+        guard let section = components.first else { return false }
+        return components.count >= 2 && (section == "movie" || section == "series")
+    }
+
+    private func isAnime108VideoPage(_ value: String) -> Bool {
+        guard let url = URL(string: value),
+              let rawHost = url.host?.lowercased() else {
+            return false
+        }
+        let host = rawHost.hasPrefix("www.") ? String(rawHost.dropFirst(4)) : rawHost
+        guard host == "anime108.com" || host.hasSuffix(".anime108.com") else {
+            return false
+        }
+        let components = url.pathComponents.filter { $0 != "/" }
+        guard components.count == 1, let slug = components.first else { return false }
+        let categorySlugs = [
+            "the-movie",
+            "top-imdb",
+            "fillter-year",
+            "author",
+            "category",
+            "tag",
+            "page"
+        ]
+        return !categorySlugs.contains(slug)
     }
 
     private var detectedVideosSheet: some View {

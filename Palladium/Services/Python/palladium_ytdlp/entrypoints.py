@@ -1,11 +1,14 @@
 import contextlib
+import base64
 import json
 import os
 import re
 import runpy
 import sys
 import traceback
-from urllib.parse import urlparse
+import html as html_lib
+from urllib.parse import parse_qs, urlencode, urljoin, urlparse
+from urllib.request import Request, urlopen
 
 from .args import (
     build_preset_args,
@@ -44,6 +47,44 @@ XHAMSTER_PAGE_HOSTS = (
     "xhamster.com",
     "xhamster.desi",
     "xhamster.xxx",
+)
+GENZ3X_PAGE_HOSTS = (
+    "genz3x.com",
+    "clipphimsex3x.net",
+    "clipsexsub3x.net",
+)
+GENZ3X_PLAYER_HOSTS = (
+    "play2.cdn-xvideos-xnxx.xyz",
+)
+SEXTOP1_PAGE_HOSTS = (
+    "sextop1.cl",
+)
+AVPLE_PAGE_HOSTS = (
+    "avple.tv",
+)
+AVPLE_ASSERT_HOSTS = (
+    "d862cp1.cdnedge.live",
+    "q2cyl71.cdnedge.live",
+    "u89ey1.cdnedge.live",
+    "zo3921.cdnedge.live",
+    "wo8801.cdnedge.live",
+    "6m7d1.cdnedge.live",
+    "8bb881.cdnedge.live",
+    "fa6781.cdnedge.live",
+    "pg2z71.cdnedge.live",
+    "1xp601.cdnedge.live",
+)
+KUBHD_PAGE_HOSTS = (
+    "kubhd24.net",
+)
+KUBHD_PLAYER_HOSTS = (
+    "hplay.hdplayfull.xyz",
+)
+ANIME108_PAGE_HOSTS = (
+    "anime108.com",
+)
+ANIME108_PLAYER_HOSTS = (
+    "main.108player.com",
 )
 
 
@@ -433,12 +474,523 @@ def is_xhamster_page_url(value):
     return any(host == domain or host.endswith(f".{domain}") for domain in XHAMSTER_PAGE_HOSTS)
 
 
+def is_genz3x_page_url(value):
+    host = normalized_url_host(value)
+    if not host:
+        return False
+    return any(host == domain or host.endswith(f".{domain}") for domain in GENZ3X_PAGE_HOSTS)
+
+
+def is_genz3x_player_url(value):
+    host = normalized_url_host(value)
+    if not host:
+        return False
+    return any(host == domain or host.endswith(f".{domain}") for domain in GENZ3X_PLAYER_HOSTS)
+
+
+def is_sextop1_page_url(value):
+    host = normalized_url_host(value)
+    if not host:
+        return False
+    return any(host == domain or host.endswith(f".{domain}") for domain in SEXTOP1_PAGE_HOSTS)
+
+
+def is_avple_page_url(value):
+    host = normalized_url_host(value)
+    if not host:
+        return False
+    return any(host == domain or host.endswith(f".{domain}") for domain in AVPLE_PAGE_HOSTS)
+
+
+def is_kubhd_page_url(value):
+    host = normalized_url_host(value)
+    if not host:
+        return False
+    return any(host == domain or host.endswith(f".{domain}") for domain in KUBHD_PAGE_HOSTS)
+
+
+def is_kubhd_player_url(value):
+    host = normalized_url_host(value)
+    if not host:
+        return False
+    return any(host == domain or host.endswith(f".{domain}") for domain in KUBHD_PLAYER_HOSTS)
+
+
+def is_anime108_page_url(value):
+    host = normalized_url_host(value)
+    if not host:
+        return False
+    return any(host == domain or host.endswith(f".{domain}") for domain in ANIME108_PAGE_HOSTS)
+
+
+def is_anime108_player_url(value):
+    host = normalized_url_host(value)
+    if not host:
+        return False
+    return any(host == domain or host.endswith(f".{domain}") for domain in ANIME108_PLAYER_HOSTS)
+
+
 def argv_contains_option(args, option):
     for arg in args:
         text = str(arg)
         if text == option or text.startswith(f"{option}="):
             return True
     return False
+
+
+def fetch_site_text(url, referer=None):
+    headers = {
+        "User-Agent": DEFAULT_BROWSER_USER_AGENT,
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "Accept-Language": "en-US,en;q=0.9,vi;q=0.8",
+    }
+    if referer:
+        headers["Referer"] = referer
+
+    request = Request(url, headers=headers)
+    with urlopen(request, timeout=30) as response:
+        body = response.read()
+        charset = response.headers.get_content_charset() or "utf-8"
+    return body.decode(charset, errors="replace")
+
+
+def post_site_text(url, data, referer=None):
+    headers = {
+        "User-Agent": DEFAULT_BROWSER_USER_AGENT,
+        "Accept": "application/json,text/javascript,*/*;q=0.8",
+        "Accept-Language": "en-US,en;q=0.9,vi;q=0.8",
+        "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
+        "X-Requested-With": "XMLHttpRequest",
+    }
+    if referer:
+        headers["Referer"] = referer
+
+    request = Request(url, data=urlencode(data).encode("utf-8"), headers=headers, method="POST")
+    with urlopen(request, timeout=30) as response:
+        body = response.read()
+        charset = response.headers.get_content_charset() or "utf-8"
+    return body.decode(charset, errors="replace")
+
+
+def fetch_site_text_impersonated(url, referer=None):
+    headers = {
+        "User-Agent": DEFAULT_BROWSER_USER_AGENT,
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "Accept-Language": "en-US,en;q=0.9,vi;q=0.8",
+    }
+    if referer:
+        headers["Referer"] = referer
+
+    try:
+        from curl_cffi import requests as curl_requests
+        curl_headers = {key: value for key, value in headers.items() if key.lower() != "user-agent"}
+        response = curl_requests.get(url, headers=curl_headers, impersonate="chrome120", timeout=30)
+        response.raise_for_status()
+        return response.text
+    except Exception as error:
+        print(f"[palladium] impersonated fetch fallback: {error}")
+        return fetch_site_text(url, referer=referer)
+
+
+def first_matching_url(candidates, base_url=None, predicate=None):
+    for raw_candidate in candidates:
+        candidate = html_lib.unescape(str(raw_candidate or "").strip()).replace("\\/", "/")
+        if not candidate or candidate == "about:blank":
+            continue
+        if base_url:
+            candidate = urljoin(base_url, candidate)
+        if predicate is None or predicate(candidate):
+            return candidate
+    return None
+
+
+def extract_genz3x_embed_url(page_html, page_url):
+    patterns = [
+        r'<meta[^>]+itemprop=["\']embedURL["\'][^>]+content=["\']([^"\']+)["\']',
+        r'<meta[^>]+content=["\']([^"\']+)["\'][^>]+itemprop=["\']embedURL["\']',
+        r'<iframe[^>]+data-src=["\']([^"\']+)["\']',
+        r'<iframe[^>]+src=["\']([^"\']+)["\']',
+    ]
+    candidates = []
+    for pattern in patterns:
+        candidates.extend(re.findall(pattern, page_html, flags=re.IGNORECASE))
+    return first_matching_url(
+        candidates,
+        base_url=page_url,
+        predicate=lambda candidate: is_genz3x_player_url(candidate) or "embed" in urlparse(candidate).path.lower(),
+    )
+
+
+def extract_first_m3u8_url(player_html):
+    normalized_html = str(player_html or "").replace("\\/", "/")
+    matches = re.findall(r'https?://[^"\'<>\s]+?\.m3u8(?:\?[^"\'<>\s]+)?', normalized_html, flags=re.IGNORECASE)
+    return first_matching_url(matches)
+
+
+def resolve_genz3x_download_url(download_url):
+    if not (is_genz3x_page_url(download_url) or is_genz3x_player_url(download_url)):
+        return download_url, [], None
+
+    try:
+        if is_genz3x_player_url(download_url):
+            embed_url = download_url
+            page_url = download_url
+        else:
+            print("[palladium] site profile resolving: genz3x page")
+            page_url = download_url
+            page_html = fetch_site_text(page_url)
+            embed_url = extract_genz3x_embed_url(page_html, page_url)
+            if not embed_url:
+                print("[palladium] genz3x resolver: no embed iframe found")
+                return download_url, [], "genz3x"
+
+        print(f"[palladium] genz3x resolver iframe: {embed_url}")
+        player_html = fetch_site_text(embed_url, referer=page_url)
+        media_url = extract_first_m3u8_url(player_html)
+        if not media_url:
+            print("[palladium] genz3x resolver: no m3u8 found in iframe")
+            return download_url, [], "genz3x"
+
+        print(f"[palladium] genz3x resolver media: {media_url}")
+        return media_url, ["--referer", embed_url, "--user-agent", DEFAULT_BROWSER_USER_AGENT], "genz3x"
+    except Exception as error:
+        print(f"[palladium] genz3x resolver failed: {error}")
+        return download_url, [], "genz3x"
+
+
+def extract_sextop1_post_id(page_html):
+    patterns = [
+        r'<div[^>]+id=["\']video["\'][^>]+data-id=["\'](\d+)["\']',
+        r'<div[^>]+data-id=["\'](\d+)["\'][^>]+id=["\']video["\']',
+        r'postid-(\d+)',
+    ]
+    for pattern in patterns:
+        match = re.search(pattern, page_html, flags=re.IGNORECASE)
+        if match:
+            return match.group(1)
+    return None
+
+
+def resolve_sextop1_download_url(download_url):
+    if not is_sextop1_page_url(download_url):
+        return download_url, [], None
+
+    try:
+        print("[palladium] site profile resolving: sextop1 page")
+        page_html = fetch_site_text(download_url)
+        post_id = extract_sextop1_post_id(page_html)
+        if not post_id:
+            print("[palladium] sextop1 resolver: no post id found")
+            return download_url, [], "sextop1"
+
+        player_url = urljoin(download_url, f"/wp-json/sextop1/player/?id={post_id}&server=1")
+        print(f"[palladium] sextop1 resolver api: {player_url}")
+        player_json_text = fetch_site_text(player_url, referer=download_url)
+        try:
+            player_payload = json.loads(player_json_text)
+            player_html = str(player_payload.get("data", ""))
+        except Exception:
+            player_html = player_json_text
+
+        media_url = extract_first_m3u8_url(player_html)
+        if not media_url:
+            print("[palladium] sextop1 resolver: no m3u8 found in API response")
+            return download_url, [], "sextop1"
+
+        print(f"[palladium] sextop1 resolver media: {media_url}")
+        return media_url, ["--referer", download_url, "--user-agent", DEFAULT_BROWSER_USER_AGENT], "sextop1"
+    except Exception as error:
+        print(f"[palladium] sextop1 resolver failed: {error}")
+        return download_url, [], "sextop1"
+
+
+def extract_next_data_json(page_html):
+    match = re.search(
+        r'<script[^>]+id=["\']__NEXT_DATA__["\'][^>]*>(.*?)</script>',
+        page_html,
+        flags=re.IGNORECASE | re.DOTALL,
+    )
+    if not match:
+        return None
+    text = html_lib.unescape(match.group(1)).strip()
+    if not text:
+        return None
+    return json.loads(text)
+
+
+def avple_media_url(play_source_type, play_path):
+    play_path = str(play_path or "").strip().lstrip("/")
+    if not play_path:
+        return None
+
+    try:
+        source_type = int(play_source_type)
+    except Exception:
+        source_type = None
+
+    if source_type == 5 or play_path.startswith("http://") or play_path.startswith("https://"):
+        return play_path
+    if source_type in (12, 13, 14, 17, 18):
+        return f"https://{AVPLE_ASSERT_HOSTS[0]}/file/avple-asserts/{play_path}"
+    return f"https://{AVPLE_ASSERT_HOSTS[0]}/file/avple-asserts/{play_path}"
+
+
+def resolve_avple_download_url(download_url):
+    if not is_avple_page_url(download_url):
+        return download_url, [], None
+
+    try:
+        print("[palladium] site profile resolving: avple page")
+        page_html = fetch_site_text_impersonated(download_url)
+        next_data = extract_next_data_json(page_html)
+        page_props = (((next_data or {}).get("props") or {}).get("pageProps") or {})
+        instance = page_props.get("instance")
+        data = page_props.get("data")
+        video_record = instance if isinstance(instance, dict) else data[0] if isinstance(data, list) and data else data if isinstance(data, dict) else {}
+        media_url = avple_media_url(video_record.get("play_source_type"), video_record.get("play"))
+        if not media_url:
+            print("[palladium] avple resolver: no playable source found")
+            return download_url, [], "avple"
+
+        print(f"[palladium] avple resolver media: {media_url}")
+        return media_url, ["--referer", download_url, "--user-agent", DEFAULT_BROWSER_USER_AGENT], "avple"
+    except Exception as error:
+        print(f"[palladium] avple resolver failed: {error}")
+        return download_url, [], "avple"
+
+
+def extract_kubhd_uni_config(page_html):
+    script_candidates = []
+    for encoded in re.findall(
+        r'<script[^>]+id=["\']uni-js-player-js-extra["\'][^>]+src=["\']data:text/javascript;base64,([^"\']+)["\']',
+        page_html,
+        flags=re.IGNORECASE,
+    ):
+        try:
+            script_candidates.append(base64.b64decode(encoded).decode("utf-8", errors="replace"))
+        except Exception:
+            continue
+    script_candidates.append(page_html)
+
+    for script_text in script_candidates:
+        match = re.search(r"var\s+_uni\s*=\s*(\{.*?\})\s*;?", script_text, flags=re.IGNORECASE | re.DOTALL)
+        if not match:
+            continue
+        try:
+            return json.loads(match.group(1))
+        except Exception:
+            continue
+    return {}
+
+
+def extract_kubhd_player_url(player_html, page_url):
+    patterns = [
+        r'<iframe[^>]+src=["\']([^"\']+)["\']',
+        r'<button[^>]+data-src=["\']([^"\']+)["\']',
+        r'data-src=["\']([^"\']+)["\']',
+    ]
+    candidates = []
+    for pattern in patterns:
+        candidates.extend(re.findall(pattern, player_html, flags=re.IGNORECASE))
+    return first_matching_url(candidates, base_url=page_url, predicate=is_kubhd_player_url)
+
+
+def extract_kubhd_player_config(player_html):
+    match = re.search(
+        r"window\.playerConfig\s*=\s*(\{.*?\})\s*;\s*</script>",
+        player_html,
+        flags=re.IGNORECASE | re.DOTALL,
+    )
+    if not match:
+        return {}
+    try:
+        return json.loads(match.group(1))
+    except Exception:
+        return {}
+
+
+def kubhd_embed_id(embed_url):
+    path_parts = [part for part in urlparse(embed_url).path.split("/") if part]
+    if len(path_parts) >= 2 and path_parts[-2].lower() == "embed":
+        candidate = path_parts[-1]
+        if re.fullmatch(r"[A-Za-z0-9_-]{1,100}", candidate):
+            return candidate
+    return None
+
+
+def resolve_kubhd_download_url(download_url):
+    if not (is_kubhd_page_url(download_url) or is_kubhd_player_url(download_url)):
+        return download_url, [], None
+
+    try:
+        if is_kubhd_player_url(download_url):
+            page_url = download_url
+            embed_url = download_url
+        else:
+            print("[palladium] site profile resolving: kubhd page")
+            page_url = download_url
+            page_html = fetch_site_text(page_url)
+            config = extract_kubhd_uni_config(page_html)
+            ajax_url = str(config.get("ajax_url") or urljoin(page_url, "/wp-admin/admin-ajax.php"))
+            post_id = str(config.get("post_id") or "").strip()
+            nonce = str(config.get("nonce") or "").strip()
+            if not post_id or not nonce:
+                print("[palladium] kubhd resolver: no ajax post id/nonce found")
+                return download_url, [], "kubhd"
+
+            print(f"[palladium] kubhd resolver ajax: {ajax_url}")
+            player_response = post_site_text(
+                ajax_url,
+                {"action": "mix_get_player", "post_id": post_id, "nonce": nonce},
+                referer=page_url,
+            )
+            try:
+                player_payload = json.loads(player_response)
+                player_html = str(player_payload.get("player", ""))
+            except Exception:
+                player_html = player_response
+
+            embed_url = extract_kubhd_player_url(player_html, page_url)
+            if not embed_url:
+                print("[palladium] kubhd resolver: no hplay iframe found")
+                return download_url, [], "kubhd"
+
+        print(f"[palladium] kubhd resolver iframe: {embed_url}")
+        player_html = fetch_site_text(embed_url, referer=page_url)
+        player_config = extract_kubhd_player_config(player_html)
+        asset_host = str(player_config.get("asset") or "media.vdohls.com").strip().strip("/")
+        if "://" in asset_host:
+            asset_url_base = asset_host
+        else:
+            asset_url_base = f"https://{asset_host}"
+        video_id = kubhd_embed_id(embed_url)
+        if not video_id:
+            print("[palladium] kubhd resolver: no embed id found")
+            return download_url, [], "kubhd"
+
+        media_url = f"{asset_url_base}/{video_id}/playlist.m3u8"
+        print(f"[palladium] kubhd resolver media: {media_url}")
+        return media_url, ["--referer", embed_url, "--user-agent", DEFAULT_BROWSER_USER_AGENT], "kubhd"
+    except Exception as error:
+        print(f"[palladium] kubhd resolver failed: {error}")
+        return download_url, [], "kubhd"
+
+
+def extract_anime108_config(page_html):
+    match = re.search(r"var\s+halim_cfg\s*=\s*(\{.*?\})\s*;", page_html, flags=re.IGNORECASE | re.DOTALL)
+    if not match:
+        return {}
+    try:
+        return json.loads(match.group(1))
+    except Exception:
+        return {}
+
+
+def extract_first_html_attr(tag_html, attr_name):
+    match = re.search(rf'{re.escape(attr_name)}=["\']([^"\']*)["\']', tag_html or "", flags=re.IGNORECASE)
+    return html_lib.unescape(match.group(1)) if match else ""
+
+
+def extract_anime108_button_config(page_html):
+    buttons = re.findall(r"<span[^>]+halim-btn[^>]*>", page_html, flags=re.IGNORECASE)
+    if not buttons:
+        return {}
+
+    selected = None
+    for button in buttons:
+        if re.search(r'\bactive\b', button, flags=re.IGNORECASE):
+            selected = button
+            break
+    selected = selected or buttons[0]
+
+    return {
+        "post_id": extract_first_html_attr(selected, "data-post-id"),
+        "server": extract_first_html_attr(selected, "data-server") or "1",
+        "episode": extract_first_html_attr(selected, "data-episode") or "1",
+        "title": extract_first_html_attr(selected, "data-title"),
+    }
+
+
+def extract_anime108_lang(page_html):
+    select_match = re.search(
+        r'<select[^>]+id=["\']Lang_select["\'][^>]*>(.*?)</select>',
+        page_html,
+        flags=re.IGNORECASE | re.DOTALL,
+    )
+    if not select_match:
+        return "Thai"
+    option_match = re.search(r'<option[^>]+value=["\']([^"\']+)["\']', select_match.group(1), flags=re.IGNORECASE)
+    return html_lib.unescape(option_match.group(1)).strip() if option_match else "Thai"
+
+
+def extract_anime108_player_url(player_html, page_url):
+    candidates = re.findall(r'<iframe[^>]+src=["\']([^"\']+)["\']', player_html, flags=re.IGNORECASE)
+    return first_matching_url(candidates, base_url=page_url, predicate=is_anime108_player_url)
+
+
+def anime108_media_url_from_player_url(player_url):
+    parsed = urlparse(player_url)
+    query = parse_qs(parsed.query)
+    media_id = (query.get("id") or [""])[0].strip()
+    if not media_id or not re.fullmatch(r"[A-Za-z0-9_-]{8,100}", media_id):
+        return None
+
+    path = parsed.path.lower()
+    backup_value = (query.get("backup") or [""])[0]
+    playlist_dir = "newplaylist_g" if "download" in path or backup_value == "1" else "newplaylist"
+    return f"https://{ANIME108_PLAYER_HOSTS[0]}/{playlist_dir}/{media_id}/{media_id}.m3u8"
+
+
+def resolve_anime108_download_url(download_url):
+    if not (is_anime108_page_url(download_url) or is_anime108_player_url(download_url)):
+        return download_url, [], None
+
+    try:
+        if is_anime108_player_url(download_url):
+            player_url = download_url
+        else:
+            print("[palladium] site profile resolving: anime108 page")
+            page_html = fetch_site_text(download_url)
+            page_config = extract_anime108_config(page_html)
+            button_config = extract_anime108_button_config(page_html)
+            post_id = str(page_config.get("post_id") or button_config.get("post_id") or "").strip()
+            episode = str(page_config.get("episode") or button_config.get("episode") or "1").strip()
+            server = str(page_config.get("server") or button_config.get("server") or "1").strip()
+            title = str(page_config.get("post_title") or button_config.get("title") or "").strip()
+            lang = extract_anime108_lang(page_html)
+            if not post_id:
+                print("[palladium] anime108 resolver: no post id found")
+                return download_url, [], "anime108"
+
+            player_response = post_site_text(
+                "https://www.anime108.com/api/get.php",
+                {
+                    "action": "halim_ajax_player",
+                    "nonce": "",
+                    "episode": episode,
+                    "server": server,
+                    "postid": post_id,
+                    "lang": lang,
+                    "title": title,
+                },
+                referer=download_url,
+            )
+            player_url = extract_anime108_player_url(player_response, download_url)
+            if not player_url:
+                print("[palladium] anime108 resolver: no 108player iframe found")
+                return download_url, [], "anime108"
+
+        print(f"[palladium] anime108 resolver iframe: {player_url}")
+        media_url = anime108_media_url_from_player_url(player_url)
+        if not media_url:
+            print("[palladium] anime108 resolver: no media id found")
+            return download_url, [], "anime108"
+
+        print(f"[palladium] anime108 resolver media: {media_url}")
+        return media_url, ["--referer", player_url, "--user-agent", DEFAULT_BROWSER_USER_AGENT], "anime108"
+    except Exception as error:
+        print(f"[palladium] anime108 resolver failed: {error}")
+        return download_url, [], "anime108"
 
 
 def build_site_specific_download_args(download_url, existing_args):
@@ -456,7 +1008,19 @@ def build_site_specific_download_args(download_url, existing_args):
 
 
 def requires_impersonation_support(extra_args_text, download_url):
-    return has_generic_impersonation_arg(extra_args_text) or is_xhamster_page_url(download_url)
+    return (
+        has_generic_impersonation_arg(extra_args_text)
+        or is_xhamster_page_url(download_url)
+        or is_avple_page_url(download_url)
+    )
+
+
+def curl_cffi_supported_version(curl_cffi_module):
+    try:
+        version = tuple(map(int, re.split(r"[^\d]+", curl_cffi_module.__version__)[:3]))
+    except Exception:
+        return False
+    return version == (0, 5, 10) or (0, 10) <= version < (0, 15)
 
 
 def ensure_curl_cffi_if_needed(pip_main, install_target, extra_args_text, download_url=None):
@@ -466,11 +1030,16 @@ def ensure_curl_cffi_if_needed(pip_main, install_target, extra_args_text, downlo
 
     if is_xhamster_page_url(download_url):
         print("[palladium] site profile enabled: xhamster browser impersonation")
+    elif is_avple_page_url(download_url):
+        print("[palladium] site profile enabled: avple browser impersonation")
     elif has_generic_impersonation_arg(extra_args_text):
         print("[palladium] cloudflare mode: enabled (generic impersonation)")
 
     try:
         import curl_cffi  # noqa: F401
+        if not curl_cffi_supported_version(curl_cffi):
+            print(f"[palladium] impersonation dependency unsupported: curl_cffi {curl_cffi.__version__}")
+            raise ImportError("unsupported curl_cffi version")
         print("[palladium] impersonation dependency ready: curl_cffi")
         return True, False, 0
     except Exception as import_error:
@@ -481,16 +1050,28 @@ def ensure_curl_cffi_if_needed(pip_main, install_target, extra_args_text, downlo
         return True, False, 1
 
     try:
-        pip_args = ["install", "--disable-pip-version-check", "--no-cache-dir", "--progress-bar", "off", "--no-color", "curl_cffi"]
+        pip_args = [
+            "install",
+            "--upgrade",
+            "--disable-pip-version-check",
+            "--no-cache-dir",
+            "--progress-bar",
+            "off",
+            "--no-color",
+            "curl_cffi>=0.10,<0.15",
+        ]
         if install_target:
             pip_args[1:1] = ["--target", install_target]
-        print("[palladium] installing impersonation dependency: curl_cffi")
+        print("[palladium] installing impersonation dependency: curl_cffi>=0.10,<0.15")
         pip_result = pip_main(pip_args)
         pip_exit_code = 0 if pip_result is None else int(pip_result)
         print(f"[palladium] impersonation dependency pip exit code: {pip_exit_code}")
         if pip_exit_code != 0:
             return True, True, pip_exit_code
         import curl_cffi  # noqa: F401
+        if not curl_cffi_supported_version(curl_cffi):
+            print(f"[palladium] impersonation dependency still unsupported: curl_cffi {curl_cffi.__version__}")
+            return True, True, 1
         print("[palladium] impersonation dependency ready after install: curl_cffi")
         return True, True, pip_exit_code
     except Exception:
@@ -786,10 +1367,23 @@ def run_yt_dlp_flow(
                             *preset_args,
                             *extra_args,
                         ]
+                        effective_download_url, resolved_site_args, resolved_site_profile_name = resolve_genz3x_download_url(download_url)
+                        if not resolved_site_profile_name:
+                            effective_download_url, resolved_site_args, resolved_site_profile_name = resolve_sextop1_download_url(download_url)
+                        if not resolved_site_profile_name:
+                            effective_download_url, resolved_site_args, resolved_site_profile_name = resolve_avple_download_url(download_url)
+                        if not resolved_site_profile_name:
+                            effective_download_url, resolved_site_args, resolved_site_profile_name = resolve_kubhd_download_url(download_url)
+                        if not resolved_site_profile_name:
+                            effective_download_url, resolved_site_args, resolved_site_profile_name = resolve_anime108_download_url(download_url)
+                        if resolved_site_profile_name:
+                            print(f"[palladium] site profile resolved: {resolved_site_profile_name}")
+                        existing_args.extend(resolved_site_args)
                         site_specific_args, site_profile_name = build_site_specific_download_args(
                             download_url,
                             existing_args,
                         )
+                        site_specific_args = [*resolved_site_args, *site_specific_args]
                         if site_profile_name:
                             print(f"[palladium] site profile args applied: {site_profile_name}")
 
@@ -815,7 +1409,7 @@ def run_yt_dlp_flow(
                             *site_specific_args,
                             *preset_args,
                             *extra_args,
-                            download_url,
+                            effective_download_url,
                         ]
 
                         try:
@@ -854,7 +1448,7 @@ def run_yt_dlp_flow(
                                 playlist_progress.set_tracking_suspended(True)
                                 retry_success, retry_error = run_retry_without_thumbnails(
                                     retry_candidate=candidate,
-                                    download_url=download_url,
+                                    download_url=effective_download_url,
                                     run_output_dir=run_output_dir,
                                     cache_dir=cache_dir,
                                     download_playlist=download_playlist,

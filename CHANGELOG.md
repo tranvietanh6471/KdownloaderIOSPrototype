@@ -1,5 +1,11 @@
 # Palladium Changelog
 
+## v1.0.5
+
+- Added site resolvers for KUBHD and Anime108 pages.
+- Added Browser download handling for YouTube, KUBHD, Anime108, Avple, Genz3X, and Sextop1 pages.
+- Improved download cards, cancel cleanup, paste controls, and default file saving behavior.
+
 ## v1.0.2
 
 - Fixed background downloads
