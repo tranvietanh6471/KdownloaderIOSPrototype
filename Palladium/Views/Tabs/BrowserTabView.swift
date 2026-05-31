@@ -489,7 +489,7 @@ private struct BrowserWebView: UIViewRepresentable {
         contentController.add(context.coordinator, name: "kdownloaderVideo")
         contentController.addUserScript(WKUserScript(
             source: Self.videoDetectionScript,
-            injectionTime: .atDocumentEnd,
+            injectionTime: .atDocumentStart,
             forMainFrameOnly: false
         ))
         WKContentRuleListStore.default().compileContentRuleList(
@@ -587,6 +587,31 @@ private struct BrowserWebView: UIViewRepresentable {
       function absoluteURL(value) {
         if (!value || typeof value !== "string") { return ""; }
         try { return new URL(value, location.href).href; } catch (_) { return value; }
+      }
+
+      function normalizeMediaText(value) {
+        return String(value || "")
+          .replace(/\\\\\\//g, "/")
+          .replace(/\\\\u002[fF]/g, "/")
+          .replace(/&amp;/g, "&");
+      }
+
+      function emitTextMediaURLs(text, source) {
+        const normalized = normalizeMediaText(text);
+        if (!videoPattern.test(normalized)) { return; }
+        videoPattern.lastIndex = 0;
+
+        const absoluteMatches = normalized.match(/(?:https?:)?\\/\\/[^"'<>\\s]+?\\.(?:m3u8|mp4|m4v|mov|webm|mpd|ts)(?:\\?[^"'<>\\s]+)?/ig) || [];
+        absoluteMatches.forEach(raw => {
+          const url = raw.startsWith("//") ? `${location.protocol}${raw}` : raw;
+          emit(url, source);
+        });
+
+        const relativePattern = /["'=:(,\\s]([^"'<>\\s]+?\\.(?:m3u8|mp4|m4v|mov|webm|mpd|ts)(?:\\?[^"'<>\\s]+)?)/ig;
+        let match = null;
+        while ((match = relativePattern.exec(normalized)) !== null) {
+          emit(match[1], source);
+        }
       }
 
       function isLikelyAd(url) {
@@ -727,11 +752,29 @@ private struct BrowserWebView: UIViewRepresentable {
 
       function scanInlineScripts() {
         document.querySelectorAll("script:not([src])").forEach(script => {
-          const text = script.textContent || "";
-          if (!videoPattern.test(text)) { return; }
-          const matches = text.match(/https?:\\/\\/[^"'<>\\s]+?\\.(?:m3u8|mp4|m4v|mov|webm|mpd|ts)(?:\\?[^"'<>\\s]+)?/ig) || [];
-          matches.forEach(url => emit(url.replace(/\\\\\\//g, "/"), "script"));
+          emitTextMediaURLs(script.textContent || "", "script");
         });
+      }
+
+      function patchMediaProperty(proto, propertyName, sourceName) {
+        try {
+          if (!proto) { return; }
+          const descriptor = Object.getOwnPropertyDescriptor(proto, propertyName);
+          if (!descriptor || !descriptor.set || descriptor.set.__kdownloaderPatched) { return; }
+          const nativeSet = descriptor.set;
+          const nativeGet = descriptor.get;
+          const patchedSet = function(value) {
+            try { emit(String(value || ""), sourceName); } catch (_) {}
+            return nativeSet.call(this, value);
+          };
+          patchedSet.__kdownloaderPatched = true;
+          Object.defineProperty(proto, propertyName, {
+            configurable: descriptor.configurable,
+            enumerable: descriptor.enumerable,
+            get: nativeGet,
+            set: patchedSet
+          });
+        } catch (_) {}
       }
 
       function installNetworkHooks() {
@@ -741,11 +784,20 @@ private struct BrowserWebView: UIViewRepresentable {
         const nativeFetch = window.fetch;
         if (nativeFetch) {
           window.fetch = function(input, init) {
+            let requestURL = "";
             try {
-              const url = typeof input === "string" ? input : (input && input.url);
-              if (url) { emit(url, "fetch"); }
+              requestURL = typeof input === "string" ? input : (input && input.url) || "";
+              if (requestURL) { emit(requestURL, "fetch"); }
             } catch (_) {}
-            return nativeFetch.apply(this, arguments);
+            return nativeFetch.apply(this, arguments).then(response => {
+              try {
+                const contentType = (response.headers && response.headers.get && response.headers.get("content-type")) || "";
+                if (/json|text|javascript|mpegurl|x-mpegurl|vnd\\.apple\\.mpegurl/i.test(contentType) || videoPattern.test(requestURL)) {
+                  response.clone().text().then(text => emitTextMediaURLs(text, "fetch-response")).catch(() => {});
+                }
+              } catch (_) {}
+              return response;
+            });
           };
         }
 
@@ -753,9 +805,29 @@ private struct BrowserWebView: UIViewRepresentable {
         if (nativeOpen) {
           XMLHttpRequest.prototype.open = function(method, url) {
             try {
+              this.__kdownloaderURL = String(url || "");
               if (url) { emit(url, "xhr"); }
             } catch (_) {}
             return nativeOpen.apply(this, arguments);
+          };
+        }
+
+        const nativeSend = typeof XMLHttpRequest !== "undefined" && XMLHttpRequest.prototype && XMLHttpRequest.prototype.send;
+        if (nativeSend) {
+          XMLHttpRequest.prototype.send = function() {
+            try {
+              this.addEventListener("loadend", () => {
+                try {
+                  const responseType = String(this.responseType || "");
+                  const responseURL = this.responseURL || this.__kdownloaderURL || "";
+                  if (responseURL) { emit(responseURL, "xhr-response-url"); }
+                  if (!responseType || responseType === "text" || responseType === "json") {
+                    emitTextMediaURLs(this.responseText || "", "xhr-response");
+                  }
+                } catch (_) {}
+              });
+            } catch (_) {}
+            return nativeSend.apply(this, arguments);
           };
         }
 
@@ -770,6 +842,10 @@ private struct BrowserWebView: UIViewRepresentable {
             return nativeSetAttribute.apply(this, arguments);
           };
         }
+
+        patchMediaProperty(typeof HTMLMediaElement !== "undefined" ? HTMLMediaElement.prototype : null, "src", "media-src-setter");
+        patchMediaProperty(typeof HTMLSourceElement !== "undefined" ? HTMLSourceElement.prototype : null, "src", "source-src-setter");
+        patchMediaProperty(typeof HTMLIFrameElement !== "undefined" ? HTMLIFrameElement.prototype : null, "src", "iframe-src-setter");
 
         if (window.PerformanceObserver) {
           try {
@@ -786,6 +862,8 @@ private struct BrowserWebView: UIViewRepresentable {
         if (source === "video" || source === "video-source") { score += 30; }
         else if (source === "dom") { score += 12; }
         else if (source === "fetch" || source === "xhr") { score += 25; }
+        else if (source === "fetch-response" || source === "xhr-response") { score += 35; }
+        else if (source === "media-src-setter" || source === "source-src-setter") { score += 35; }
         else if (String(source || "").startsWith("attr:") || String(source || "").startsWith("setattr:")) { score += 18; }
         else if (source === "script") { score += 10; }
         else if (source === "resource") { score -= 4; }
@@ -842,6 +920,7 @@ private struct BrowserWebView: UIViewRepresentable {
         installNetworkHooks();
         emitSupportedPageURL();
         removeKnownAdNodes();
+        if (!document.querySelectorAll) { return; }
         document.querySelectorAll("video").forEach(video => {
           emit(video.currentSrc || video.src, "video", null, video);
           video.querySelectorAll("source").forEach(source => emit(source.src, "video-source", null, video));
@@ -859,7 +938,17 @@ private struct BrowserWebView: UIViewRepresentable {
       window.kdownloaderScanVideos = scanVideos;
       document.addEventListener("play", scanVideos, true);
       document.addEventListener("loadedmetadata", scanVideos, true);
-      new MutationObserver(scanVideos).observe(document.documentElement, { childList: true, subtree: true, attributes: true });
+      function installDomObserver() {
+        if (!document.documentElement || window.kdownloaderDomObserverInstalled) { return; }
+        window.kdownloaderDomObserverInstalled = true;
+        new MutationObserver(scanVideos).observe(document.documentElement, { childList: true, subtree: true, attributes: true });
+      }
+      document.addEventListener("DOMContentLoaded", () => {
+        installDomObserver();
+        scanVideos();
+      }, true);
+      installNetworkHooks();
+      installDomObserver();
       setInterval(scanVideos, 1200);
       scanVideos();
     })();
