@@ -57,6 +57,8 @@ YOUTUBE_HOSTS = (
 )
 GENZ3X_PAGE_HOSTS = (
     "genz3x.com",
+    "haysex3x.com",
+    "haysex3xs.com",
     "clipphimsex3x.net",
     "clipsexsub3x.net",
 )
@@ -943,6 +945,8 @@ def genz3x_referer_candidates(primary_referer=None):
         primary_referer,
         "https://clipphimsex3x.net/",
         "https://genz3x.com/",
+        "https://haysex3x.com/",
+        "https://haysex3xs.com/",
         "https://clipsexsub3x.net/",
     ):
         if candidate and candidate not in candidates:
@@ -1631,8 +1635,6 @@ def requires_impersonation_support(extra_args_text, download_url):
     return (
         has_generic_impersonation_arg(extra_args_text)
         or is_xhamster_page_url(download_url)
-        or is_genz3x_page_url(download_url)
-        or is_genz3x_player_url(download_url)
         or is_avple_page_url(download_url)
     )
 
@@ -1682,8 +1684,6 @@ def ensure_curl_cffi_if_needed(pip_main, install_target, extra_args_text, downlo
 
     if is_xhamster_page_url(download_url):
         print("[palladium] site profile enabled: xhamster browser impersonation")
-    elif is_genz3x_page_url(download_url) or is_genz3x_player_url(download_url):
-        print("[palladium] site profile enabled: genz3x browser impersonation")
     elif is_avple_page_url(download_url):
         print("[palladium] site profile enabled: avple browser impersonation")
     elif has_generic_impersonation_arg(extra_args_text):
@@ -1938,7 +1938,8 @@ def run_yt_dlp_flow(
             )
             if curl_cffi_install_attempted:
                 pip_attempted = True
-                pip_exit_code = curl_cffi_pip_exit_code
+                if curl_cffi_pip_exit_code == 0:
+                    pip_exit_code = 0
 
             raise_if_cancel_requested(cancel_file_path, "[palladium] cancellation requested before webkit patch")
             ensure_safe_webkit_jsi_runtime(install_target)

@@ -369,7 +369,7 @@ struct BrowserTabView: View {
             return false
         }
         let host = rawHost.hasPrefix("www.") ? String(rawHost.dropFirst(4)) : rawHost
-        let knownHosts = ["genz3x.com", "clipphimsex3x.net", "clipsexsub3x.net"]
+        let knownHosts = ["genz3x.com", "haysex3x.com", "haysex3xs.com", "clipphimsex3x.net", "clipsexsub3x.net"]
         guard knownHosts.contains(where: { host == $0 || host.hasSuffix(".\($0)") }) else {
             return false
         }
@@ -706,7 +706,7 @@ private struct BrowserWebView: UIViewRepresentable {
       const pageStartedAt = Date.now();
       const candidates = new Map();
       const videoPattern = /\\.(m3u8|mp4|m4v|mov|webm|mpd|ts)(\\?|#|$)/i;
-      const playerPattern = /(cloudbeta\\.win\\/embed\\/|(?:hplay|hdplayfull)[^/]*\\/embed\\/|(?:main\\.)?108player\\.com\\/(?:index_th\\.php|download_new\\.html|newplaylist|newplaylist_g|m3u8|m3u8_g)|(?:player2\\.)?meeplayer\\.com\\/(?:play|p2p|p2p-hls)|embed2free|cdn-xvideos-xnxx\\.xyz\\/embed\\.php)/i;
+      const playerPattern = /(cloudbeta\\.win\\/embed\\/|(?:hplay|hdplayfull)[^/]*\\/embed\\/|(?:main\\.)?108player\\.com\\/(?:index_th\\.php|download_new\\.html|newplaylist|newplaylist_g|m3u8|m3u8_g)|(?:player2\\.)?meeplayer\\.com\\/(?:play|p2p|p2p-hls)|embed2free|cdn-xvideos-xnxx\\.xyz\\/embed\\d*\\.php)/i;
       const adHostPattern = /(^|\\.)(doubleclick\\.net|googlesyndication\\.com|googleadservices\\.com|adservice\\.google\\.|adnxs\\.com|adsrvr\\.org|pubmatic\\.com|rubiconproject\\.com|openx\\.net|criteo\\.com|taboola\\.com|outbrain\\.com|scorecardresearch\\.com|moatads\\.com|imasdk\\.googleapis\\.com)$/i;
       const adPathPattern = /(^|[\\/_\\-.?&=])(ad|ads|advert|advertising|vast|vpaid|prebid|preroll|pre-roll|midroll|mid-roll|postroll|post-roll|instream|bumper|ima|beacon|pixel|tracking|analytics|sponsor|promo)([\\/_\\-.?&=]|$)/i;
 
@@ -732,7 +732,7 @@ private struct BrowserWebView: UIViewRepresentable {
           emit(url, source);
         });
 
-        const relativePattern = /["'=:(,\\s]([^"'<>\\s]+?(?:\\.(?:m3u8|mp4|m4v|mov|webm|mpd|ts)(?:\\?[^"'<>\\s]+)?|(?:hplay|hdplayfull|108player|cloudbeta|meeplayer|embed2free|embed\\.php)[^"'<>\\s]*))/ig;
+        const relativePattern = /["'=:(,\\s]([^"'<>\\s]+?(?:\\.(?:m3u8|mp4|m4v|mov|webm|mpd|ts)(?:\\?[^"'<>\\s]+)?|(?:hplay|hdplayfull|108player|cloudbeta|meeplayer|embed2free|embed\\d*\\.php)[^"'<>\\s]*))/ig;
         let match = null;
         while ((match = relativePattern.exec(normalized)) !== null) {
           emit(match[1], source);
@@ -823,7 +823,7 @@ private struct BrowserWebView: UIViewRepresentable {
           }
           if ((host === "xhamster.com" || host.endsWith(".xhamster.com") || host === "xhamster.desi" || host.endsWith(".xhamster.desi") || host === "xhamster.xxx" || host.endsWith(".xhamster.xxx"))
             && path.toLowerCase().includes("/videos/")) { return "xHamster page"; }
-          if ((host === "genz3x.com" || host.endsWith(".genz3x.com") || host === "clipphimsex3x.net" || host.endsWith(".clipphimsex3x.net") || host === "clipsexsub3x.net" || host.endsWith(".clipsexsub3x.net"))
+          if ((host === "genz3x.com" || host.endsWith(".genz3x.com") || host === "haysex3x.com" || host.endsWith(".haysex3x.com") || host === "haysex3xs.com" || host.endsWith(".haysex3xs.com") || host === "clipphimsex3x.net" || host.endsWith(".clipphimsex3x.net") || host === "clipsexsub3x.net" || host.endsWith(".clipsexsub3x.net"))
             && /^\\/.+\\/\\d+\\/?$/i.test(path)) { return "Genz3X page"; }
           if ((host === "sextop1.cl" || host.endsWith(".sextop1.cl")) && parts.length === 1) { return "Sextop1 page"; }
           if ((host === "avple.tv" || host.endsWith(".avple.tv")) && parts.length === 2 && parts[0] === "video") { return "Avple page"; }
