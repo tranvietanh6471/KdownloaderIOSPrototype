@@ -156,7 +156,7 @@ struct BrowserTabView: View {
 
     private var browserDownloadURL: String {
         let detectedURL = detectedVideoURL.trimmingCharacters(in: .whitespacesAndNewlines)
-        if isDirectMediaURL(detectedURL) {
+        if isDirectMediaURL(detectedURL) || isResolvablePlayerURL(detectedURL) {
             return detectedURL
         }
 
@@ -171,6 +171,9 @@ struct BrowserTabView: View {
         let downloadURL = browserDownloadURL
         if isDirectMediaURL(downloadURL) {
             return mediaDownloadLabel(for: downloadURL)
+        }
+        if isResolvablePlayerURL(downloadURL) {
+            return playerDownloadLabel(for: downloadURL)
         }
         if isYouTubeVideoPage(downloadURL) {
             return "YouTube page"
@@ -206,6 +209,9 @@ struct BrowserTabView: View {
         if isDirectMediaURL(browserDownloadURL) {
             return "Download"
         }
+        if isResolvablePlayerURL(browserDownloadURL) {
+            return "Resolve"
+        }
         return "Analyze"
     }
 
@@ -217,6 +223,11 @@ struct BrowserTabView: View {
             return "Media: \(host)"
         }
         return "Media: \(path)"
+    }
+
+    private func playerDownloadLabel(for value: String) -> String {
+        guard let url = URL(string: value) else { return "Player link" }
+        return "Player: \(url.host ?? value)"
     }
 
     private func isDirectMediaURL(_ value: String) -> Bool {
@@ -233,6 +244,36 @@ struct BrowserTabView: View {
             of: "\\.(m3u8|mp4|m4v|mov|webm|mpd|ts)(\\?|#|/|$)",
             options: [.regularExpression, .caseInsensitive]
         ) != nil
+    }
+
+    private func isResolvablePlayerURL(_ value: String) -> Bool {
+        guard let url = URL(string: value),
+              let scheme = url.scheme?.lowercased(),
+              scheme == "http" || scheme == "https",
+              let rawHost = url.host?.lowercased() else {
+            return false
+        }
+        let host = rawHost.hasPrefix("www.") ? String(rawHost.dropFirst(4)) : rawHost
+        let path = url.path.lowercased()
+        if (host.contains("hplay") || host.contains("hdplayfull")) && path.contains("/embed/") {
+            return true
+        }
+        if host == "main.108player.com" || host.hasSuffix(".108player.com") {
+            return true
+        }
+        if host == "cloudbeta.win" || host.hasSuffix(".cloudbeta.win") {
+            return path.contains("/embed/")
+        }
+        if host == "meeplayer.com" || host.hasSuffix(".meeplayer.com") {
+            return path.contains("/play/") || path.contains("/p2p/") || path.contains("/p2p-hls/")
+        }
+        if host == "xcdnx.cdn-xvideos-xnxx.xyz" || host == "play2.cdn-xvideos-xnxx.xyz" {
+            return path.contains("embed")
+        }
+        if host.contains("embed2free") {
+            return path.contains("embed") || path.contains("player") || path.contains("p2p")
+        }
+        return false
     }
 
     private func isYouTubeVideoPage(_ value: String) -> Bool {
@@ -371,7 +412,7 @@ struct BrowserTabView: View {
                             .truncationMode(.middle)
                         Text(candidate.sourceLabel)
                             .font(.caption2.weight(.semibold))
-                            .foregroundStyle(candidate.isDirectMedia ? Color.green : Color.orange)
+                            .foregroundStyle((candidate.isDirectMedia || candidate.isResolvablePlayer) ? Color.green : Color.orange)
                     }
                 }
             }
@@ -420,8 +461,42 @@ struct DetectedVideoCandidate: Identifiable, Equatable {
         ) != nil
     }
 
+    var isResolvablePlayer: Bool {
+        guard let parsedURL = URL(string: url),
+              let rawHost = parsedURL.host?.lowercased() else {
+            return false
+        }
+        let host = rawHost.hasPrefix("www.") ? String(rawHost.dropFirst(4)) : rawHost
+        let path = parsedURL.path.lowercased()
+        if (host.contains("hplay") || host.contains("hdplayfull")) && path.contains("/embed/") {
+            return true
+        }
+        if host == "main.108player.com" || host.hasSuffix(".108player.com") {
+            return true
+        }
+        if host == "cloudbeta.win" || host.hasSuffix(".cloudbeta.win") {
+            return path.contains("/embed/")
+        }
+        if host == "meeplayer.com" || host.hasSuffix(".meeplayer.com") {
+            return path.contains("/play/") || path.contains("/p2p/") || path.contains("/p2p-hls/")
+        }
+        if host == "xcdnx.cdn-xvideos-xnxx.xyz" || host == "play2.cdn-xvideos-xnxx.xyz" {
+            return path.contains("embed")
+        }
+        if host.contains("embed2free") {
+            return path.contains("embed") || path.contains("player") || path.contains("p2p")
+        }
+        return false
+    }
+
     var sourceLabel: String {
-        isDirectMedia ? "Detected media - \(source)" : "Page only - \(source)"
+        if isDirectMedia {
+            return "Detected media - \(source)"
+        }
+        if isResolvablePlayer {
+            return "Player resolver - \(source)"
+        }
+        return "Page only - \(source)"
     }
 }
 
@@ -581,6 +656,7 @@ private struct BrowserWebView: UIViewRepresentable {
       const pageStartedAt = Date.now();
       const candidates = new Map();
       const videoPattern = /\\.(m3u8|mp4|m4v|mov|webm|mpd|ts)(\\?|#|$)/i;
+      const playerPattern = /(cloudbeta\\.win\\/embed\\/|(?:hplay|hdplayfull)[^/]*\\/embed\\/|(?:main\\.)?108player\\.com\\/(?:index_th\\.php|download_new\\.html|newplaylist|newplaylist_g|m3u8|m3u8_g)|(?:player2\\.)?meeplayer\\.com\\/(?:play|p2p|p2p-hls)|embed2free|cdn-xvideos-xnxx\\.xyz\\/embed\\.php)/i;
       const adHostPattern = /(^|\\.)(doubleclick\\.net|googlesyndication\\.com|googleadservices\\.com|adservice\\.google\\.|adnxs\\.com|adsrvr\\.org|pubmatic\\.com|rubiconproject\\.com|openx\\.net|criteo\\.com|taboola\\.com|outbrain\\.com|scorecardresearch\\.com|moatads\\.com|imasdk\\.googleapis\\.com)$/i;
       const adPathPattern = /(^|[\\/_\\-.?&=])(ad|ads|advert|advertising|vast|vpaid|prebid|preroll|pre-roll|midroll|mid-roll|postroll|post-roll|instream|bumper|ima|beacon|pixel|tracking|analytics|sponsor|promo)([\\/_\\-.?&=]|$)/i;
 
@@ -598,16 +674,15 @@ private struct BrowserWebView: UIViewRepresentable {
 
       function emitTextMediaURLs(text, source) {
         const normalized = normalizeMediaText(text);
-        if (!videoPattern.test(normalized)) { return; }
-        videoPattern.lastIndex = 0;
+        if (!videoPattern.test(normalized) && !playerPattern.test(normalized)) { return; }
 
-        const absoluteMatches = normalized.match(/(?:https?:)?\\/\\/[^"'<>\\s]+?\\.(?:m3u8|mp4|m4v|mov|webm|mpd|ts)(?:\\?[^"'<>\\s]+)?/ig) || [];
+        const absoluteMatches = normalized.match(/(?:https?:)?\\/\\/[^"'<>\\s\\\\]+/ig) || [];
         absoluteMatches.forEach(raw => {
-          const url = raw.startsWith("//") ? `${location.protocol}${raw}` : raw;
+          const url = (raw.startsWith("//") ? `${location.protocol}${raw}` : raw).replace(/[),;\\]}]+$/g, "");
           emit(url, source);
         });
 
-        const relativePattern = /["'=:(,\\s]([^"'<>\\s]+?\\.(?:m3u8|mp4|m4v|mov|webm|mpd|ts)(?:\\?[^"'<>\\s]+)?)/ig;
+        const relativePattern = /["'=:(,\\s]([^"'<>\\s]+?(?:\\.(?:m3u8|mp4|m4v|mov|webm|mpd|ts)(?:\\?[^"'<>\\s]+)?|(?:hplay|hdplayfull|108player|cloudbeta|meeplayer|embed2free|embed\\.php)[^"'<>\\s]*))/ig;
         let match = null;
         while ((match = relativePattern.exec(normalized)) !== null) {
           emit(match[1], source);
@@ -632,6 +707,10 @@ private struct BrowserWebView: UIViewRepresentable {
         return 0;
       }
 
+      function isResolvablePlayerURL(url) {
+        return playerPattern.test(url || "");
+      }
+
       function videoElementScore(video) {
         if (!video) { return 0; }
         const rect = video.getBoundingClientRect ? video.getBoundingClientRect() : { width: 0, height: 0 };
@@ -653,7 +732,7 @@ private struct BrowserWebView: UIViewRepresentable {
 
       function isCandidate(value, source, entry, video) {
         const url = absoluteURL(value);
-        if (!url || isLikelyAd(url) || !videoPattern.test(url)) { return false; }
+        if (!url || isLikelyAd(url) || (!videoPattern.test(url) && !isResolvablePlayerURL(url))) { return false; }
         if (video) {
           const duration = Number(video.duration || 0);
           if (
@@ -668,7 +747,7 @@ private struct BrowserWebView: UIViewRepresentable {
         }
         if (source === "resource") {
           const size = Number(entry && (entry.transferSize || entry.encodedBodySize || entry.decodedBodySize) || 0);
-          if (!/\\.(m3u8|mpd)(\\?|#|$)/i.test(url) && size > 0 && size < 524288) {
+          if (!isResolvablePlayerURL(url) && !/\\.(m3u8|mpd)(\\?|#|$)/i.test(url) && size > 0 && size < 524288) {
             return false;
           }
         }
@@ -736,9 +815,16 @@ private struct BrowserWebView: UIViewRepresentable {
           "data-file",
           "data-video",
           "data-hls",
+          "data-player",
+          "data-source",
+          "data-stream",
           "data-url",
           "data-play",
           "data-embed",
+          "data-iframe",
+          "data-link",
+          "data-config",
+          "data-options",
           "poster"
         ];
         const nodes = root && root.querySelectorAll ? root.querySelectorAll("*") : [];
@@ -835,7 +921,7 @@ private struct BrowserWebView: UIViewRepresentable {
         if (nativeSetAttribute) {
           Element.prototype.setAttribute = function(name, value) {
             try {
-              if (/^(src|href|data-src|data-file|data-video|data-hls|data-url|data-play|data-embed)$/i.test(String(name || ""))) {
+              if (/^(src|href|data-src|data-file|data-video|data-hls|data-player|data-source|data-stream|data-url|data-play|data-embed|data-iframe|data-link|data-config|data-options)$/i.test(String(name || ""))) {
                 emit(String(value || ""), `setattr:${name}`);
               }
             } catch (_) {}
@@ -859,6 +945,7 @@ private struct BrowserWebView: UIViewRepresentable {
 
       function candidateScore(url, source, entry, video) {
         let score = mediaExtensionScore(url);
+        if (isResolvablePlayerURL(url)) { score += 32; }
         if (source === "video" || source === "video-source") { score += 30; }
         else if (source === "dom") { score += 12; }
         else if (source === "fetch" || source === "xhr") { score += 25; }
@@ -921,6 +1008,44 @@ private struct BrowserWebView: UIViewRepresentable {
         emitSupportedPageURL();
         removeKnownAdNodes();
         if (!document.querySelectorAll) { return; }
+        try {
+          if (!window.kdownloaderTriedPlayerButtons) {
+            window.kdownloaderTriedPlayerButtons = true;
+            const serverSelectors = ".dooplay_player_option,[id^='player-option-'],[data-post][data-nume],[data-nume][data-type],[class*='player_option'],[class*='source'][data-id],[class*='server'][data-id],.halim-btn,[data-post-id][data-server]";
+            Array.from(document.querySelectorAll(serverSelectors)).slice(0, 8).forEach((element, index) => {
+              setTimeout(() => {
+                try {
+                  element.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true, view: window }));
+                  if (typeof element.click === "function") { element.click(); }
+                } catch (_) {}
+              }, 350 + index * 650);
+            });
+          }
+        } catch (_) {}
+        try {
+          if (!window.kdownloaderTriedPlay) {
+            window.kdownloaderTriedPlay = true;
+            document.querySelectorAll("video").forEach(video => {
+              try {
+                video.muted = true;
+                const result = video.play();
+                if (result && result.catch) { result.catch(() => {}); }
+              } catch (_) {}
+            });
+            const playSelectors = "button,[role='button'],.play,.btn-play,.vjs-big-play-button,.jw-icon-playback,.plyr__control,[class*='play']";
+            Array.from(document.querySelectorAll(playSelectors)).slice(0, 6).forEach((element, index) => {
+              setTimeout(() => {
+                try {
+                  const text = `${element.textContent || ""} ${element.className || ""} ${element.getAttribute("aria-label") || ""}`.toLowerCase();
+                  if (/play|watch|start/.test(text)) {
+                    element.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true, view: window }));
+                    if (typeof element.click === "function") { element.click(); }
+                  }
+                } catch (_) {}
+              }, 700 + index * 500);
+            });
+          }
+        } catch (_) {}
         document.querySelectorAll("video").forEach(video => {
           emit(video.currentSrc || video.src, "video", null, video);
           video.querySelectorAll("source").forEach(source => emit(source.src, "video-source", null, video));
@@ -933,6 +1058,9 @@ private struct BrowserWebView: UIViewRepresentable {
         if (performance && performance.getEntriesByType) {
           performance.getEntriesByType("resource").forEach(entry => emit(entry.name, "resource", entry));
         }
+        try {
+          emitTextMediaURLs(document.documentElement ? document.documentElement.outerHTML : "", "html");
+        } catch (_) {}
       }
 
       window.kdownloaderScanVideos = scanVideos;

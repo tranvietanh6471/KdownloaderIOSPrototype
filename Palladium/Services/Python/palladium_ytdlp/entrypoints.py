@@ -94,6 +94,13 @@ ANIME108_PAGE_HOSTS = (
 ANIME108_PLAYER_HOSTS = (
     "main.108player.com",
 )
+CLOUDBETA_PLAYER_HOSTS = (
+    "cloudbeta.win",
+)
+MEEPLAYER_HOSTS = (
+    "meeplayer.com",
+    "player2.meeplayer.com",
+)
 
 
 class PlaylistProgressCollector:
@@ -528,7 +535,11 @@ def is_kubhd_player_url(value):
     host = normalized_url_host(value)
     if not host:
         return False
-    return any(host == domain or host.endswith(f".{domain}") for domain in KUBHD_PLAYER_HOSTS)
+    path = urlparse(str(value or "")).path.lower()
+    return (
+        any(host == domain or host.endswith(f".{domain}") for domain in KUBHD_PLAYER_HOSTS)
+        or (("hplay" in host or "hdplayfull" in host) and "/embed/" in path)
+    )
 
 
 def is_anime108_page_url(value):
@@ -543,6 +554,24 @@ def is_anime108_player_url(value):
     if not host:
         return False
     return any(host == domain or host.endswith(f".{domain}") for domain in ANIME108_PLAYER_HOSTS)
+
+
+def is_cloudbeta_player_url(value):
+    host = normalized_url_host(value)
+    if not host:
+        return False
+    path = urlparse(str(value or "")).path.lower()
+    return any(host == domain or host.endswith(f".{domain}") for domain in CLOUDBETA_PLAYER_HOSTS) and "/embed/" in path
+
+
+def is_meeplayer_url(value):
+    host = normalized_url_host(value)
+    if not host:
+        return False
+    path = urlparse(str(value or "")).path.lower()
+    return any(host == domain or host.endswith(f".{domain}") for domain in MEEPLAYER_HOSTS) and (
+        "/play/" in path or "/p2p/" in path or "/p2p-hls/" in path
+    )
 
 
 def argv_contains_option(args, option):
@@ -1027,6 +1056,51 @@ def resolve_anime108_download_url(download_url):
         return download_url, [], "anime108"
 
 
+def resolve_cloudbeta_download_url(download_url):
+    if not is_cloudbeta_player_url(download_url):
+        return download_url, [], None
+
+    try:
+        parsed = urlparse(download_url)
+        parts = [part for part in parsed.path.split("/") if part]
+        if len(parts) < 3 or parts[0].lower() != "embed":
+            return download_url, [], "cloudbeta"
+        user_id = parts[1]
+        file_id = parts[2]
+        media_url = f"https://play.cloudbeta.win/file/em3u8/{user_id}/{file_id}.m3u8"
+        print(f"[palladium] cloudbeta resolver media: {media_url}")
+        return media_url, ["--referer", download_url, "--user-agent", DEFAULT_BROWSER_USER_AGENT], "cloudbeta"
+    except Exception as error:
+        print(f"[palladium] cloudbeta resolver failed: {error}")
+        return download_url, [], "cloudbeta"
+
+
+def resolve_meeplayer_download_url(download_url):
+    if not is_meeplayer_url(download_url):
+        return download_url, [], None
+
+    try:
+        match = re.search(r"/(?:play|p2p|p2p-hls)/([^/?#]+)", urlparse(download_url).path, flags=re.IGNORECASE)
+        if not match:
+            return download_url, [], "meeplayer"
+        video_id = match.group(1)
+        api_url = f"https://player2.meeplayer.com/api/video/{video_id}"
+        print(f"[palladium] meeplayer resolver api: {api_url}")
+        payload = json.loads(fetch_site_text(api_url, referer=download_url))
+        video = payload.get("video") if isinstance(payload, dict) else {}
+        md5 = str((video or {}).get("md5") or "").strip()
+        status = str((video or {}).get("iStatus") or "1").strip()
+        if not md5 or status == "0":
+            print("[palladium] meeplayer resolver: no playable md5")
+            return download_url, [], "meeplayer"
+        media_url = f"https://meeplayer.com/hlsr2/{md5}/master"
+        print(f"[palladium] meeplayer resolver media: {media_url}")
+        return media_url, ["--referer", download_url, "--user-agent", DEFAULT_BROWSER_USER_AGENT], "meeplayer"
+    except Exception as error:
+        print(f"[palladium] meeplayer resolver failed: {error}")
+        return download_url, [], "meeplayer"
+
+
 def build_site_specific_download_args(download_url, existing_args):
     if is_youtube_url(download_url):
         args = []
@@ -1464,6 +1538,10 @@ def run_yt_dlp_flow(
                             effective_download_url, resolved_site_args, resolved_site_profile_name = resolve_kubhd_download_url(download_url)
                         if not resolved_site_profile_name:
                             effective_download_url, resolved_site_args, resolved_site_profile_name = resolve_anime108_download_url(download_url)
+                        if not resolved_site_profile_name:
+                            effective_download_url, resolved_site_args, resolved_site_profile_name = resolve_cloudbeta_download_url(download_url)
+                        if not resolved_site_profile_name:
+                            effective_download_url, resolved_site_args, resolved_site_profile_name = resolve_meeplayer_download_url(download_url)
                         if resolved_site_profile_name:
                             print(f"[palladium] site profile resolved: {resolved_site_profile_name}")
                         existing_args.extend(resolved_site_args)
