@@ -10,6 +10,7 @@ struct BrowserTabView: View {
     @State private var addressText = "https://www.google.com"
     @State private var detectedVideoURL = ""
     @State private var detectedTitleHint = ""
+    @State private var detectedVideoSource = ""
     @State private var detectedVideos: [DetectedVideoCandidate] = []
     @State private var showDetectedVideos = false
 
@@ -23,6 +24,7 @@ struct BrowserTabView: View {
                         controller: controller,
                         detectedVideoURL: $detectedVideoURL,
                         detectedTitleHint: $detectedTitleHint,
+                        detectedVideoSource: $detectedVideoSource,
                         detectedVideos: $detectedVideos,
                         addressText: $addressText
                     )
@@ -53,7 +55,7 @@ struct BrowserTabView: View {
                             Button {
                                 onDownloadURL(browserDownloadURL, detectedTitleHint)
                             } label: {
-                                Label(isRunning ? "Queue" : "Download", systemImage: "arrow.down.circle.fill")
+                                Label(browserDownloadButtonTitle, systemImage: "arrow.down.circle.fill")
                                     .font(.footnote.weight(.bold))
                             }
                             .buttonStyle(.borderedProminent)
@@ -159,14 +161,17 @@ struct BrowserTabView: View {
         }
 
         let pageURL = addressText.trimmingCharacters(in: .whitespacesAndNewlines)
-        if isYouTubeVideoPage(pageURL) || isXHamsterVideoPage(pageURL) || isGenz3XVideoPage(pageURL) || isSextop1VideoPage(pageURL) || isAvpleVideoPage(pageURL) || isKubHDVideoPage(pageURL) || isAnime108VideoPage(pageURL) {
+        if isYouTubeVideoPage(pageURL) {
             return pageURL
         }
-        return detectedURL
+        return ""
     }
 
     private var browserDownloadLabel: String {
         let downloadURL = browserDownloadURL
+        if isDirectMediaURL(downloadURL) {
+            return mediaDownloadLabel(for: downloadURL)
+        }
         if isYouTubeVideoPage(downloadURL) {
             return "YouTube page"
         }
@@ -194,6 +199,26 @@ struct BrowserTabView: View {
         return url.lastPathComponent.isEmpty ? (url.host ?? downloadURL) : url.lastPathComponent
     }
 
+    private var browserDownloadButtonTitle: String {
+        if isRunning {
+            return "Queue"
+        }
+        if isDirectMediaURL(browserDownloadURL) {
+            return "Download"
+        }
+        return "Analyze"
+    }
+
+    private func mediaDownloadLabel(for value: String) -> String {
+        guard let url = URL(string: value) else { return "Detected media" }
+        let host = url.host ?? "media"
+        let path = url.lastPathComponent
+        if path.isEmpty {
+            return "Media: \(host)"
+        }
+        return "Media: \(path)"
+    }
+
     private func isDirectMediaURL(_ value: String) -> Bool {
         guard let url = URL(string: value),
               let scheme = url.scheme?.lowercased(),
@@ -201,7 +226,13 @@ struct BrowserTabView: View {
             return false
         }
         let mediaExtensions: Set<String> = ["m3u8", "mp4", "m4v", "mov", "webm", "mpd", "ts"]
-        return mediaExtensions.contains(url.pathExtension.lowercased())
+        if mediaExtensions.contains(url.pathExtension.lowercased()) {
+            return true
+        }
+        return value.range(
+            of: "\\.(m3u8|mp4|m4v|mov|webm|mpd|ts)(\\?|#|/|$)",
+            options: [.regularExpression, .caseInsensitive]
+        ) != nil
     }
 
     private func isYouTubeVideoPage(_ value: String) -> Bool {
@@ -325,6 +356,7 @@ struct BrowserTabView: View {
                 Button {
                     detectedVideoURL = candidate.url
                     detectedTitleHint = candidate.pageTitle
+                    detectedVideoSource = candidate.source
                     showDetectedVideos = false
                 } label: {
                     VStack(alignment: .leading, spacing: 4) {
@@ -337,6 +369,9 @@ struct BrowserTabView: View {
                             .foregroundStyle(.secondary)
                             .lineLimit(2)
                             .truncationMode(.middle)
+                        Text(candidate.sourceLabel)
+                            .font(.caption2.weight(.semibold))
+                            .foregroundStyle(candidate.isDirectMedia ? Color.green : Color.orange)
                     }
                 }
             }
@@ -371,6 +406,22 @@ struct DetectedVideoCandidate: Identifiable, Equatable {
     var displayName: String {
         guard let parsedURL = URL(string: url) else { return url }
         return parsedURL.lastPathComponent.isEmpty ? (parsedURL.host ?? url) : parsedURL.lastPathComponent
+    }
+
+    var isDirectMedia: Bool {
+        guard let parsedURL = URL(string: url) else { return false }
+        let mediaExtensions: Set<String> = ["m3u8", "mp4", "m4v", "mov", "webm", "mpd", "ts"]
+        if mediaExtensions.contains(parsedURL.pathExtension.lowercased()) {
+            return true
+        }
+        return url.range(
+            of: "\\.(m3u8|mp4|m4v|mov|webm|mpd|ts)(\\?|#|/|$)",
+            options: [.regularExpression, .caseInsensitive]
+        ) != nil
+    }
+
+    var sourceLabel: String {
+        isDirectMedia ? "Detected media - \(source)" : "Page only - \(source)"
     }
 }
 
@@ -421,6 +472,7 @@ private struct BrowserWebView: UIViewRepresentable {
     @ObservedObject var controller: BrowserController
     @Binding var detectedVideoURL: String
     @Binding var detectedTitleHint: String
+    @Binding var detectedVideoSource: String
     @Binding var detectedVideos: [DetectedVideoCandidate]
     @Binding var addressText: String
 
@@ -483,6 +535,7 @@ private struct BrowserWebView: UIViewRepresentable {
             parent.addressText = webView.url?.absoluteString ?? parent.addressText
             parent.detectedVideoURL = ""
             parent.detectedTitleHint = ""
+            parent.detectedVideoSource = ""
             parent.detectedVideos = []
         }
 
@@ -494,6 +547,7 @@ private struct BrowserWebView: UIViewRepresentable {
             guard message.name == "kdownloaderVideo" else { return }
             if let url = message.body as? String, !url.isEmpty {
                 parent.detectedVideoURL = url
+                parent.detectedVideoSource = "legacy"
             } else if let payload = message.body as? [String: Any],
                       let url = payload["url"] as? String,
                       !url.isEmpty {
@@ -502,6 +556,7 @@ private struct BrowserWebView: UIViewRepresentable {
                 let score = (payload["score"] as? NSNumber)?.intValue ?? (payload["score"] as? Int) ?? 0
                 parent.detectedVideoURL = url
                 parent.detectedTitleHint = title
+                parent.detectedVideoSource = source
                 let candidate = DetectedVideoCandidate(
                     url: url,
                     pageTitle: title,
@@ -648,10 +703,91 @@ private struct BrowserWebView: UIViewRepresentable {
         });
       }
 
+      function scanNodeAttributes(root) {
+        const attributeNames = [
+          "src",
+          "href",
+          "data-src",
+          "data-file",
+          "data-video",
+          "data-hls",
+          "data-url",
+          "data-play",
+          "data-embed",
+          "poster"
+        ];
+        const nodes = root && root.querySelectorAll ? root.querySelectorAll("*") : [];
+        nodes.forEach(node => {
+          attributeNames.forEach(name => {
+            const value = node.getAttribute && node.getAttribute(name);
+            if (value) { emit(value, `attr:${name}`); }
+          });
+        });
+      }
+
+      function scanInlineScripts() {
+        document.querySelectorAll("script:not([src])").forEach(script => {
+          const text = script.textContent || "";
+          if (!videoPattern.test(text)) { return; }
+          const matches = text.match(/https?:\\/\\/[^"'<>\\s]+?\\.(?:m3u8|mp4|m4v|mov|webm|mpd|ts)(?:\\?[^"'<>\\s]+)?/ig) || [];
+          matches.forEach(url => emit(url.replace(/\\\\\\//g, "/"), "script"));
+        });
+      }
+
+      function installNetworkHooks() {
+        if (window.kdownloaderHooksInstalled) { return; }
+        window.kdownloaderHooksInstalled = true;
+
+        const nativeFetch = window.fetch;
+        if (nativeFetch) {
+          window.fetch = function(input, init) {
+            try {
+              const url = typeof input === "string" ? input : (input && input.url);
+              if (url) { emit(url, "fetch"); }
+            } catch (_) {}
+            return nativeFetch.apply(this, arguments);
+          };
+        }
+
+        const nativeOpen = typeof XMLHttpRequest !== "undefined" && XMLHttpRequest.prototype && XMLHttpRequest.prototype.open;
+        if (nativeOpen) {
+          XMLHttpRequest.prototype.open = function(method, url) {
+            try {
+              if (url) { emit(url, "xhr"); }
+            } catch (_) {}
+            return nativeOpen.apply(this, arguments);
+          };
+        }
+
+        const nativeSetAttribute = typeof Element !== "undefined" && Element.prototype && Element.prototype.setAttribute;
+        if (nativeSetAttribute) {
+          Element.prototype.setAttribute = function(name, value) {
+            try {
+              if (/^(src|href|data-src|data-file|data-video|data-hls|data-url|data-play|data-embed)$/i.test(String(name || ""))) {
+                emit(String(value || ""), `setattr:${name}`);
+              }
+            } catch (_) {}
+            return nativeSetAttribute.apply(this, arguments);
+          };
+        }
+
+        if (window.PerformanceObserver) {
+          try {
+            const observer = new PerformanceObserver(list => {
+              list.getEntries().forEach(entry => emit(entry.name, "resource", entry));
+            });
+            observer.observe({ entryTypes: ["resource"] });
+          } catch (_) {}
+        }
+      }
+
       function candidateScore(url, source, entry, video) {
         let score = mediaExtensionScore(url);
         if (source === "video" || source === "video-source") { score += 30; }
         else if (source === "dom") { score += 12; }
+        else if (source === "fetch" || source === "xhr") { score += 25; }
+        else if (String(source || "").startsWith("attr:") || String(source || "").startsWith("setattr:")) { score += 18; }
+        else if (source === "script") { score += 10; }
         else if (source === "resource") { score -= 4; }
         score += videoElementScore(video);
         const size = Number(entry && (entry.transferSize || entry.encodedBodySize || entry.decodedBodySize) || 0);
@@ -703,6 +839,7 @@ private struct BrowserWebView: UIViewRepresentable {
       }
 
       function scanVideos() {
+        installNetworkHooks();
         emitSupportedPageURL();
         removeKnownAdNodes();
         document.querySelectorAll("video").forEach(video => {
@@ -712,6 +849,8 @@ private struct BrowserWebView: UIViewRepresentable {
         document.querySelectorAll("source, a").forEach(node => {
           emit(node.src || node.href, "dom");
         });
+        scanNodeAttributes(document);
+        scanInlineScripts();
         if (performance && performance.getEntriesByType) {
           performance.getEntriesByType("resource").forEach(entry => emit(entry.name, "resource", entry));
         }
