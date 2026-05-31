@@ -509,7 +509,8 @@ def is_genz3x_player_url(value):
     host = normalized_url_host(value)
     if not host:
         return False
-    return any(host == domain or host.endswith(f".{domain}") for domain in GENZ3X_PLAYER_HOSTS)
+    path = urlparse(str(value or "")).path.lower()
+    return any(host == domain or host.endswith(f".{domain}") for domain in GENZ3X_PLAYER_HOSTS) and "embed" in path
 
 
 def is_sextop1_page_url(value):
@@ -969,7 +970,7 @@ def resolve_genz3x_download_url(download_url, referer=None):
             embed_url = extract_genz3x_embed_url(page_html, page_url)
             if not embed_url:
                 print("[palladium] genz3x resolver: no embed iframe found")
-                return download_url, [], "genz3x"
+                return download_url, [], None
 
         print(f"[palladium] genz3x resolver iframe: {embed_url}")
         media_url = None
@@ -987,13 +988,13 @@ def resolve_genz3x_download_url(download_url, referer=None):
             if last_fetch_error:
                 print(f"[palladium] genz3x resolver last iframe error: {last_fetch_error}")
             print("[palladium] genz3x resolver: no media URL found in iframe")
-            return download_url, [], "genz3x"
+            return download_url, [], None
 
         print(f"[palladium] genz3x resolver media: {media_url}")
         return media_url, ["--referer", embed_url, "--user-agent", DEFAULT_BROWSER_USER_AGENT], "genz3x"
     except Exception as error:
         print(f"[palladium] genz3x resolver failed: {error}")
-        return download_url, [], "genz3x"
+        return download_url, [], None
 
 
 def extract_sextop1_post_id(page_html):
@@ -1019,7 +1020,7 @@ def resolve_sextop1_download_url(download_url):
         post_id = extract_sextop1_post_id(page_html)
         if not post_id:
             print("[palladium] sextop1 resolver: no post id found")
-            return download_url, [], "sextop1"
+            return download_url, [], None
 
         player_url = urljoin(download_url, f"/wp-json/sextop1/player/?id={post_id}&server=1")
         print(f"[palladium] sextop1 resolver api: {player_url}")
@@ -1033,13 +1034,13 @@ def resolve_sextop1_download_url(download_url):
         media_url = extract_first_m3u8_url(player_html)
         if not media_url:
             print("[palladium] sextop1 resolver: no m3u8 found in API response")
-            return download_url, [], "sextop1"
+            return download_url, [], None
 
         print(f"[palladium] sextop1 resolver media: {media_url}")
         return media_url, ["--referer", download_url, "--user-agent", DEFAULT_BROWSER_USER_AGENT], "sextop1"
     except Exception as error:
         print(f"[palladium] sextop1 resolver failed: {error}")
-        return download_url, [], "sextop1"
+        return download_url, [], None
 
 
 def extract_next_data_json(page_html):
@@ -1088,13 +1089,13 @@ def resolve_avple_download_url(download_url):
         media_url = avple_media_url(video_record.get("play_source_type"), video_record.get("play"))
         if not media_url:
             print("[palladium] avple resolver: no playable source found")
-            return download_url, [], "avple"
+            return download_url, [], None
 
         print(f"[palladium] avple resolver media: {media_url}")
         return media_url, ["--referer", download_url, "--user-agent", DEFAULT_BROWSER_USER_AGENT], "avple"
     except Exception as error:
         print(f"[palladium] avple resolver failed: {error}")
-        return download_url, [], "avple"
+        return download_url, [], None
 
 
 def extract_kubhd_uni_config(page_html):
@@ -1174,7 +1175,7 @@ def resolve_kubhd_download_url(download_url):
             nonce = str(config.get("nonce") or "").strip()
             if not post_id or not nonce:
                 print("[palladium] kubhd resolver: no ajax post id/nonce found")
-                return download_url, [], "kubhd"
+                return download_url, [], None
 
             print(f"[palladium] kubhd resolver ajax: {ajax_url}")
             player_response = post_site_text(
@@ -1191,7 +1192,7 @@ def resolve_kubhd_download_url(download_url):
             embed_url = extract_kubhd_player_url(player_html, page_url)
             if not embed_url:
                 print("[palladium] kubhd resolver: no hplay iframe found")
-                return download_url, [], "kubhd"
+                return download_url, [], None
 
         print(f"[palladium] kubhd resolver iframe: {embed_url}")
         player_html = fetch_site_text(embed_url, referer=page_url)
@@ -1204,14 +1205,14 @@ def resolve_kubhd_download_url(download_url):
         video_id = kubhd_embed_id(embed_url)
         if not video_id:
             print("[palladium] kubhd resolver: no embed id found")
-            return download_url, [], "kubhd"
+            return download_url, [], None
 
         media_url = f"{asset_url_base}/{video_id}/playlist.m3u8"
         print(f"[palladium] kubhd resolver media: {media_url}")
         return media_url, ["--referer", embed_url, "--user-agent", DEFAULT_BROWSER_USER_AGENT], "kubhd"
     except Exception as error:
         print(f"[palladium] kubhd resolver failed: {error}")
-        return download_url, [], "kubhd"
+        return download_url, [], None
 
 
 def extract_anime108_config(page_html):
@@ -1298,7 +1299,7 @@ def resolve_anime108_download_url(download_url):
             lang = extract_anime108_lang(page_html)
             if not post_id:
                 print("[palladium] anime108 resolver: no post id found")
-                return download_url, [], "anime108"
+                return download_url, [], None
 
             player_response = post_site_text(
                 "https://www.anime108.com/api/get.php",
@@ -1316,19 +1317,19 @@ def resolve_anime108_download_url(download_url):
             player_url = extract_anime108_player_url(player_response, download_url)
             if not player_url:
                 print("[palladium] anime108 resolver: no 108player iframe found")
-                return download_url, [], "anime108"
+                return download_url, [], None
 
         print(f"[palladium] anime108 resolver iframe: {player_url}")
         media_url = anime108_media_url_from_player_url(player_url)
         if not media_url:
             print("[palladium] anime108 resolver: no media id found")
-            return download_url, [], "anime108"
+            return download_url, [], None
 
         print(f"[palladium] anime108 resolver media: {media_url}")
         return media_url, ["--referer", player_url, "--user-agent", DEFAULT_BROWSER_USER_AGENT], "anime108"
     except Exception as error:
         print(f"[palladium] anime108 resolver failed: {error}")
-        return download_url, [], "anime108"
+        return download_url, [], None
 
 
 def resolve_cloudbeta_download_url(download_url):
@@ -1339,7 +1340,7 @@ def resolve_cloudbeta_download_url(download_url):
         parsed = urlparse(download_url)
         parts = [part for part in parsed.path.split("/") if part]
         if len(parts) < 3 or parts[0].lower() != "embed":
-            return download_url, [], "cloudbeta"
+            return download_url, [], None
         user_id = parts[1]
         file_id = parts[2]
         media_url = f"https://play.cloudbeta.win/file/em3u8/{user_id}/{file_id}.m3u8"
@@ -1347,7 +1348,7 @@ def resolve_cloudbeta_download_url(download_url):
         return media_url, ["--referer", download_url, "--user-agent", DEFAULT_BROWSER_USER_AGENT], "cloudbeta"
     except Exception as error:
         print(f"[palladium] cloudbeta resolver failed: {error}")
-        return download_url, [], "cloudbeta"
+        return download_url, [], None
 
 
 def resolve_meeplayer_download_url(download_url):
@@ -1357,7 +1358,7 @@ def resolve_meeplayer_download_url(download_url):
     try:
         match = re.search(r"/(?:play|p2p|p2p-hls)/([^/?#]+)", urlparse(download_url).path, flags=re.IGNORECASE)
         if not match:
-            return download_url, [], "meeplayer"
+            return download_url, [], None
         video_id = match.group(1)
         api_url = f"https://player2.meeplayer.com/api/video/{video_id}"
         print(f"[palladium] meeplayer resolver api: {api_url}")
@@ -1367,13 +1368,13 @@ def resolve_meeplayer_download_url(download_url):
         status = str((video or {}).get("iStatus") or "1").strip()
         if not md5 or status == "0":
             print("[palladium] meeplayer resolver: no playable md5")
-            return download_url, [], "meeplayer"
+            return download_url, [], None
         media_url = f"https://meeplayer.com/hlsr2/{md5}/master"
         print(f"[palladium] meeplayer resolver media: {media_url}")
         return media_url, ["--referer", download_url, "--user-agent", DEFAULT_BROWSER_USER_AGENT], "meeplayer"
     except Exception as error:
         print(f"[palladium] meeplayer resolver failed: {error}")
-        return download_url, [], "meeplayer"
+        return download_url, [], None
 
 
 def extract_dooplay_options(page_html):

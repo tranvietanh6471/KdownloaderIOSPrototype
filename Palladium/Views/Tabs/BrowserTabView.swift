@@ -157,9 +157,6 @@ struct BrowserTabView: View {
     private var browserDownloadURL: String {
         let detectedURL = detectedVideoURL.trimmingCharacters(in: .whitespacesAndNewlines)
         let pageURL = addressText.trimmingCharacters(in: .whitespacesAndNewlines)
-        if isGenz3XPlayerURL(detectedURL), isGenz3XVideoPage(pageURL) {
-            return pageURL
-        }
         if isDirectMediaURL(detectedURL) || isResolvablePlayerURL(detectedURL) {
             return detectedURL
         }
@@ -314,16 +311,6 @@ struct BrowserTabView: View {
             return path.contains("embed") || path.contains("player") || path.contains("p2p")
         }
         return false
-    }
-
-    private func isGenz3XPlayerURL(_ value: String) -> Bool {
-        guard let url = URL(string: value),
-              let rawHost = url.host?.lowercased() else {
-            return false
-        }
-        let host = rawHost.hasPrefix("www.") ? String(rawHost.dropFirst(4)) : rawHost
-        return (host == "xcdnx.cdn-xvideos-xnxx.xyz" || host == "play2.cdn-xvideos-xnxx.xyz")
-            && url.path.lowercased().contains("embed")
     }
 
     private func isYouTubeVideoPage(_ value: String) -> Bool {
@@ -679,15 +666,28 @@ private struct BrowserWebView: UIViewRepresentable {
                 let title = (payload["pageTitle"] as? String) ?? ""
                 let source = (payload["source"] as? String) ?? ""
                 let score = (payload["score"] as? NSNumber)?.intValue ?? (payload["score"] as? Int) ?? 0
-                parent.detectedVideoURL = url
-                parent.detectedTitleHint = title
-                parent.detectedVideoSource = source
-                let candidate = DetectedVideoCandidate(
+                let incomingCandidate = DetectedVideoCandidate(
                     url: url,
                     pageTitle: title,
                     source: source,
                     score: score
                 )
+                let currentCandidate = DetectedVideoCandidate(
+                    url: parent.detectedVideoURL,
+                    pageTitle: parent.detectedTitleHint,
+                    source: parent.detectedVideoSource,
+                    score: 0
+                )
+                if source == "page",
+                   !incomingCandidate.isDirectMedia,
+                   !incomingCandidate.isResolvablePlayer,
+                   (currentCandidate.isDirectMedia || currentCandidate.isResolvablePlayer) {
+                    return
+                }
+                parent.detectedVideoURL = url
+                parent.detectedTitleHint = title
+                parent.detectedVideoSource = source
+                let candidate = incomingCandidate
                 parent.detectedVideos.removeAll { $0.url == url }
                 parent.detectedVideos.insert(candidate, at: 0)
                 if parent.detectedVideos.count > 12 {
@@ -702,6 +702,7 @@ private struct BrowserWebView: UIViewRepresentable {
       if (window.kdownloaderInstalled) { return; }
       window.kdownloaderInstalled = true;
       var lastURL = "";
+      var lastPageURL = "";
       var emitTimer = null;
       const pageStartedAt = Date.now();
       const candidates = new Map();
@@ -722,21 +723,69 @@ private struct BrowserWebView: UIViewRepresentable {
           .replace(/&amp;/g, "&");
       }
 
+      function addTextVariant(list, value) {
+        try {
+          if (!value) { return; }
+          let text = String(value);
+          if (text.length > 500000) { text = text.slice(0, 500000); }
+          if (text && !list.includes(text)) { list.push(text); }
+        } catch (_) {}
+      }
+
+      function textVariants(text) {
+        const variants = [];
+        try {
+          const raw = String(text || "");
+          addTextVariant(variants, normalizeMediaText(raw));
+          addTextVariant(
+            variants,
+            raw
+              .replace(/\\\\u([0-9a-fA-F]{4})/g, (_, h) => String.fromCharCode(parseInt(h, 16)))
+              .replace(/\\\\x([0-9a-fA-F]{2})/g, (_, h) => String.fromCharCode(parseInt(h, 16)))
+              .replace(/\\\\\\//g, "/")
+              .replace(/&amp;/g, "&")
+          );
+          addTextVariant(
+            variants,
+            raw.replace(/(["'])([^"']{1,500})\\1\\s*\\+\\s*(["'])([^"']{1,500})\\3/g, (_, q1, a, q2, b) => `"${a}${b}"`)
+          );
+          try { addTextVariant(variants, decodeURIComponent(raw)); } catch (_) {}
+          raw.replace(/decodeURIComponent\\s*\\(\\s*["']([^"']+)["']\\s*\\)/ig, (_, v) => {
+            try { addTextVariant(variants, decodeURIComponent(v)); } catch (_) {}
+            return _;
+          });
+          raw.replace(/atob\\s*\\(\\s*["']([A-Za-z0-9+/_=-]{16,})["']\\s*\\)/ig, (_, v) => {
+            try {
+              let encoded = v.replace(/-/g, "+").replace(/_/g, "/");
+              while (encoded.length % 4) { encoded += "="; }
+              const decoded = atob(encoded);
+              if (/(https?:)?\\/\\/|m3u8|mpd|iframe|source|file|playlist|manifest|player|embed/i.test(decoded)) {
+                addTextVariant(variants, decoded);
+              }
+            } catch (_) {}
+            return _;
+          });
+        } catch (_) {}
+        return variants;
+      }
+
       function emitTextMediaURLs(text, source) {
-        const normalized = normalizeMediaText(text);
-        if (!videoPattern.test(normalized) && !playerPattern.test(normalized)) { return; }
+        const variants = textVariants(text);
+        if (!variants.some(variant => videoPattern.test(variant) || playerPattern.test(variant))) { return; }
 
-        const absoluteMatches = normalized.match(/(?:https?:)?\\/\\/[^"'<>\\s\\\\]+/ig) || [];
-        absoluteMatches.forEach(raw => {
-          const url = (raw.startsWith("//") ? `${location.protocol}${raw}` : raw).replace(/[),;\\]}]+$/g, "");
-          emit(url, source);
+        variants.forEach(normalized => {
+          const absoluteMatches = normalized.match(/(?:https?:)?\\/\\/[^"'<>\\s\\\\]+/ig) || [];
+          absoluteMatches.forEach(raw => {
+            const url = (raw.startsWith("//") ? `${location.protocol}${raw}` : raw).replace(/[),;\\]}]+$/g, "");
+            emit(url, source);
+          });
+
+          const relativePattern = /["'=:(,\\s]([^"'<>\\s]+?(?:\\.(?:m3u8|mp4|m4v|mov|webm|mpd|ts)(?:\\?[^"'<>\\s]+)?|(?:hplay|hdplayfull|108player|cloudbeta|meeplayer|embed2free|embed\\d*\\.php)[^"'<>\\s]*))/ig;
+          let match = null;
+          while ((match = relativePattern.exec(normalized)) !== null) {
+            emit(match[1], source);
+          }
         });
-
-        const relativePattern = /["'=:(,\\s]([^"'<>\\s]+?(?:\\.(?:m3u8|mp4|m4v|mov|webm|mpd|ts)(?:\\?[^"'<>\\s]+)?|(?:hplay|hdplayfull|108player|cloudbeta|meeplayer|embed2free|embed\\d*\\.php)[^"'<>\\s]*))/ig;
-        let match = null;
-        while ((match = relativePattern.exec(normalized)) !== null) {
-          emit(match[1], source);
-        }
       }
 
       function isLikelyAd(url) {
@@ -837,8 +886,8 @@ private struct BrowserWebView: UIViewRepresentable {
       function emitSupportedPageURL() {
         const pageURL = location.href;
         const label = supportedPageLabel(pageURL);
-        if (!label || pageURL === lastURL) { return; }
-        lastURL = pageURL;
+        if (!label || pageURL === lastPageURL) { return; }
+        lastPageURL = pageURL;
         window.webkit.messageHandlers.kdownloaderVideo.postMessage({
           url: pageURL,
           pageTitle: cleanTitle(),
