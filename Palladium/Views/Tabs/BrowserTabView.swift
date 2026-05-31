@@ -156,11 +156,14 @@ struct BrowserTabView: View {
 
     private var browserDownloadURL: String {
         let detectedURL = detectedVideoURL.trimmingCharacters(in: .whitespacesAndNewlines)
+        let pageURL = addressText.trimmingCharacters(in: .whitespacesAndNewlines)
+        if isGenz3XPlayerURL(detectedURL), isGenz3XVideoPage(pageURL) {
+            return pageURL
+        }
         if isDirectMediaURL(detectedURL) || isResolvablePlayerURL(detectedURL) {
             return detectedURL
         }
 
-        let pageURL = addressText.trimmingCharacters(in: .whitespacesAndNewlines)
         if isYouTubeVideoPage(pageURL) {
             return pageURL
         }
@@ -311,6 +314,16 @@ struct BrowserTabView: View {
             return path.contains("embed") || path.contains("player") || path.contains("p2p")
         }
         return false
+    }
+
+    private func isGenz3XPlayerURL(_ value: String) -> Bool {
+        guard let url = URL(string: value),
+              let rawHost = url.host?.lowercased() else {
+            return false
+        }
+        let host = rawHost.hasPrefix("www.") ? String(rawHost.dropFirst(4)) : rawHost
+        return (host == "xcdnx.cdn-xvideos-xnxx.xyz" || host == "play2.cdn-xvideos-xnxx.xyz")
+            && url.path.lowercased().contains("embed")
     }
 
     private func isYouTubeVideoPage(_ value: String) -> Bool {
@@ -862,6 +875,10 @@ private struct BrowserWebView: UIViewRepresentable {
           "data-link",
           "data-config",
           "data-options",
+          "content",
+          "data-content",
+          "value",
+          "onclick",
           "poster"
         ];
         const nodes = root && root.querySelectorAll ? root.querySelectorAll("*") : [];
@@ -958,7 +975,7 @@ private struct BrowserWebView: UIViewRepresentable {
         if (nativeSetAttribute) {
           Element.prototype.setAttribute = function(name, value) {
             try {
-              if (/^(src|href|data-src|data-file|data-video|data-hls|data-player|data-source|data-stream|data-url|data-play|data-embed|data-iframe|data-link|data-config|data-options)$/i.test(String(name || ""))) {
+              if (/^(src|href|data-src|data-file|data-video|data-hls|data-player|data-source|data-stream|data-url|data-play|data-embed|data-iframe|data-link|data-config|data-options|content|data-content|value|onclick)$/i.test(String(name || ""))) {
                 emit(String(value || ""), `setattr:${name}`);
               }
             } catch (_) {}

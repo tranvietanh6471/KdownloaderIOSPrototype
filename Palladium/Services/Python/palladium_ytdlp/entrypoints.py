@@ -884,12 +884,15 @@ def candidate_score(value):
 
 def resolve_known_player_candidate(candidate, referer):
     resolvers = (
-        resolve_genz3x_download_url,
         resolve_kubhd_download_url,
         resolve_anime108_download_url,
         resolve_cloudbeta_download_url,
         resolve_meeplayer_download_url,
     )
+    if is_genz3x_player_url(candidate):
+        resolved_url, resolved_args, profile = resolve_genz3x_download_url(candidate, referer=referer)
+        if profile and resolved_url and resolved_url != candidate:
+            return resolved_url, resolved_args, profile
     for resolver in resolvers:
         resolved_url, resolved_args, profile = resolver(candidate)
         if profile and resolved_url and resolved_url != candidate:
@@ -934,14 +937,27 @@ def extract_first_media_url(player_html):
     return first_matching_url(candidates)
 
 
-def resolve_genz3x_download_url(download_url):
+def genz3x_referer_candidates(primary_referer=None):
+    candidates = []
+    for candidate in (
+        primary_referer,
+        "https://clipphimsex3x.net/",
+        "https://genz3x.com/",
+        "https://clipsexsub3x.net/",
+    ):
+        if candidate and candidate not in candidates:
+            candidates.append(candidate)
+    return candidates
+
+
+def resolve_genz3x_download_url(download_url, referer=None):
     if not (is_genz3x_page_url(download_url) or is_genz3x_player_url(download_url)):
         return download_url, [], None
 
     try:
         if is_genz3x_player_url(download_url):
             embed_url = download_url
-            page_url = download_url
+            page_url = referer if referer and referer != download_url else None
         else:
             print("[palladium] site profile resolving: genz3x page")
             page_url = download_url
@@ -952,9 +968,20 @@ def resolve_genz3x_download_url(download_url):
                 return download_url, [], "genz3x"
 
         print(f"[palladium] genz3x resolver iframe: {embed_url}")
-        player_html = fetch_site_text_impersonated(embed_url, referer=page_url)
-        media_url = extract_first_media_url(player_html)
+        media_url = None
+        last_fetch_error = None
+        for player_referer in genz3x_referer_candidates(page_url):
+            try:
+                player_html = fetch_site_text_impersonated(embed_url, referer=player_referer)
+                media_url = extract_first_media_url(player_html)
+                if media_url:
+                    break
+            except Exception as fetch_error:
+                last_fetch_error = fetch_error
+                print(f"[palladium] genz3x iframe fetch failed with referer {player_referer}: {fetch_error}")
         if not media_url:
+            if last_fetch_error:
+                print(f"[palladium] genz3x resolver last iframe error: {last_fetch_error}")
             print("[palladium] genz3x resolver: no media URL found in iframe")
             return download_url, [], "genz3x"
 
