@@ -30,12 +30,12 @@ struct BrowserTabView: View {
                     )
                     .ignoresSafeArea(edges: .bottom)
 
-                    if !browserDownloadURL.isEmpty {
+                    if !browserActionURL.isEmpty {
                         HStack(spacing: 10) {
-                            Image(systemName: "video.fill")
+                            Image(systemName: browserActionSystemImage)
                                 .font(.system(size: 16, weight: .semibold))
 
-                            Text(browserDownloadLabel)
+                            Text(browserActionLabel)
                                 .font(.footnote.weight(.semibold))
                                 .lineLimit(1)
                                 .truncationMode(.middle)
@@ -53,13 +53,13 @@ struct BrowserTabView: View {
                             }
 
                             Button {
-                                onDownloadURL(browserDownloadURL, detectedTitleHint)
+                                onDownloadURL(browserActionURL, detectedTitleHint)
                             } label: {
-                                Label(browserDownloadButtonTitle, systemImage: "arrow.down.circle.fill")
+                                Label(browserActionButtonTitle, systemImage: "arrow.down.circle.fill")
                                     .font(.footnote.weight(.bold))
                             }
                             .buttonStyle(.borderedProminent)
-                            .disabled(browserDownloadURL.isEmpty)
+                            .disabled(browserActionURL.isEmpty)
                         }
                         .padding(10)
                         .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 8))
@@ -165,6 +165,43 @@ struct BrowserTabView: View {
             return pageURL
         }
         return ""
+    }
+
+    private var pageScanURL: String {
+        guard browserDownloadURL.isEmpty else { return "" }
+        let pageURL = addressText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let url = URL(string: pageURL),
+              let scheme = url.scheme?.lowercased(),
+              scheme == "http" || scheme == "https",
+              let host = url.host?.lowercased(),
+              !host.contains("google.com") else {
+            return ""
+        }
+        return pageURL
+    }
+
+    private var browserActionURL: String {
+        let downloadURL = browserDownloadURL
+        return downloadURL.isEmpty ? pageScanURL : downloadURL
+    }
+
+    private var browserActionLabel: String {
+        if !browserDownloadURL.isEmpty {
+            return browserDownloadLabel
+        }
+        guard let url = URL(string: pageScanURL) else { return "Scan page" }
+        return "Scan page: \(url.host ?? "current")"
+    }
+
+    private var browserActionButtonTitle: String {
+        if !browserDownloadURL.isEmpty {
+            return browserDownloadButtonTitle
+        }
+        return isRunning ? "Queue" : "Scan"
+    }
+
+    private var browserActionSystemImage: String {
+        browserDownloadURL.isEmpty ? "magnifyingglass.circle.fill" : "video.fill"
     }
 
     private var browserDownloadLabel: String {

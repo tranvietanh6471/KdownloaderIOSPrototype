@@ -653,6 +653,250 @@ def first_matching_url(candidates, base_url=None, predicate=None):
     return None
 
 
+def unescape_js_text(value):
+    text = str(value or "")
+    text = (
+        text.replace("\\/", "/")
+        .replace("\\u0026", "&")
+        .replace("\\u003d", "=")
+        .replace("\\u003f", "?")
+        .replace("\\u002f", "/")
+        .replace("\\u002F", "/")
+    )
+
+    def replace_unicode(match):
+        try:
+            return chr(int(match.group(1), 16))
+        except Exception:
+            return match.group(0)
+
+    text = re.sub(r"\\u([0-9a-fA-F]{4})", replace_unicode, text)
+    text = re.sub(r"\\x([0-9a-fA-F]{2})", replace_unicode, text)
+    return text
+
+
+def maybe_decode_base64_text(value):
+    text = str(value or "").strip().replace("-", "+").replace("_", "/")
+    if len(text) < 16 or len(text) > 12000:
+        return None
+    remainder = len(text) % 4
+    if remainder == 1:
+        return None
+    if remainder:
+        text += "=" * (4 - remainder)
+    try:
+        decoded = base64.b64decode(text, validate=False).decode("utf-8", errors="replace")
+    except Exception:
+        return None
+    if re.search(r"(https?:)?//|m3u8|mpd|iframe|source|file|playlist|manifest|player|embed", decoded, re.IGNORECASE):
+        return decoded
+    return None
+
+
+def add_text_variant(variants, seen, value):
+    text = str(value or "")
+    if not text.strip():
+        return
+    if len(text) > 3000000:
+        text = text[:3000000]
+    if text in seen:
+        return
+    seen.add(text)
+    variants.append(text)
+
+
+def text_scan_variants(text):
+    variants = []
+    seen = set()
+    add_text_variant(variants, seen, text)
+    try:
+        add_text_variant(variants, seen, html_lib.unescape(str(text or "")))
+    except Exception:
+        pass
+    add_text_variant(variants, seen, unescape_js_text(text))
+    try:
+        from urllib.parse import unquote
+        add_text_variant(variants, seen, unquote(str(text or "")))
+    except Exception:
+        pass
+
+    for scan in list(variants):
+        try:
+            add_text_variant(variants, seen, unescape_js_text(html_lib.unescape(scan)))
+        except Exception:
+            pass
+        try:
+            from urllib.parse import unquote
+            add_text_variant(variants, seen, unescape_js_text(unquote(scan)))
+        except Exception:
+            pass
+
+        joined = re.sub(
+            r'(["\'])([^"\']{1,500})\1\s*\+\s*(["\'])([^"\']{1,500})\3',
+            lambda match: f'"{match.group(2)}{match.group(4)}"',
+            scan,
+        )
+        add_text_variant(variants, seen, joined)
+
+        for match in re.finditer(r'decodeURIComponent\s*\(\s*["\']([^"\']+)["\']\s*\)', scan, flags=re.IGNORECASE):
+            try:
+                from urllib.parse import unquote
+                add_text_variant(variants, seen, unquote(match.group(1)))
+            except Exception:
+                pass
+
+        for match in re.finditer(r'atob\s*\(\s*["\']([A-Za-z0-9+/_=-]{16,})["\']\s*\)', scan, flags=re.IGNORECASE):
+            decoded = maybe_decode_base64_text(match.group(1))
+            if decoded:
+                add_text_variant(variants, seen, decoded)
+
+    base64_count = 0
+    for scan in list(variants):
+        for match in re.finditer(r"(?<![A-Za-z0-9+/_=-])([A-Za-z0-9+/_=-]{40,12000})(?![A-Za-z0-9+/_=-])", scan):
+            if base64_count >= 12 or len(variants) >= 24:
+                break
+            decoded = maybe_decode_base64_text(match.group(1))
+            if decoded:
+                base64_count += 1
+                add_text_variant(variants, seen, decoded)
+
+    return variants
+
+
+def is_crawler_blocked_url(value):
+    text = str(value or "").lower()
+    if not text:
+        return True
+    blocked = (
+        r"wp-json/oembed|/oembed|__cf_chl_|google-analytics|googletagmanager|doubleclick|"
+        r"facebook\.com|twitter\.com|x\.com/|telegram|t\.me/|line\.me|cdn-cgi/rum|"
+        r"/ads?|banner|popunder|histats|yandex\.ru/metrika|"
+        r"\.(css|js|png|jpe?g|gif|webp|svg|ico|woff2?|ttf|otf|eot)(\?|#|$)"
+    )
+    return re.search(blocked, text, flags=re.IGNORECASE) is not None
+
+
+def generic_media_kind(value, content_type=""):
+    url = str(value or "").lower()
+    ctype = str(content_type or "").lower()
+    if url.startswith("blob:"):
+        return "blob"
+    if re.search(r"https?://[^/]*(hplay|hdplayfull)[^/]*/embed/", url):
+        return "player"
+    if re.search(r"https?://[^/]*cloudbeta\.win/embed/", url):
+        return "player"
+    if is_anime108_player_url(value) or is_meeplayer_url(value) or is_genz3x_player_url(value):
+        return "player"
+    if re.search(r"/(?:hlsr2|hls|m3u8|m3u8_g|newplaylist|newplaylist_g)/.*(?:/master|/playlist|/index)(\?|#|$)", url):
+        return "hls"
+    if re.search(r"\.m3u8(\?|#|$)", url) or "mpegurl" in ctype:
+        return "hls"
+    if re.search(r"\.mpd(\?|#|$)", url) or "dash" in ctype:
+        return "dash"
+    match = re.search(r"\.(mp4|m4v|webm|mkv|mov|avi|wmv|flv|f4v|3gp|3g2|ts|m2ts|mts|ogv|aac|mp3)(\?|#|$)", url)
+    if match:
+        return match.group(1)
+    if ctype.startswith("video/"):
+        return ctype[6:].split(";", 1)[0]
+    if ctype.startswith("audio/"):
+        return "audio-" + ctype[6:].split(";", 1)[0]
+    if "octet-stream" in ctype or "attachment" in ctype or "filename=" in ctype:
+        return "file"
+    return ""
+
+
+def is_likely_media_candidate(value, content_type=""):
+    if not value or is_crawler_blocked_url(value):
+        return False
+    if re.search(r"googleads|doubleclick|googlesyndication|pagead|adservice|adnxs|taboola|outbrain", str(value), re.IGNORECASE):
+        return False
+    kind = generic_media_kind(value, content_type)
+    return bool(kind and not kind.startswith("audio-") and kind != "blob")
+
+
+def is_likely_player_page(value, content_type=""):
+    if not value or is_crawler_blocked_url(value) or is_likely_media_candidate(value, content_type):
+        return False
+    lower = str(value or "").lower()
+    return (
+        re.search(r"\.(html?|php|aspx?)(\?|#|$)", lower) and re.search(r"player|embed|iframe|source|server|stream|watch|play|video", lower)
+    ) or re.search(r"^https?://[^/]*(player|embed|stream|video|watch|play|hls|cdn)[^/]*/", lower) or re.search(
+        r"/(?:player|embed|iframe|source|server|stream|watch|play|video)(?:/|\?|#|$)", lower
+    )
+
+
+def normalize_candidate_url(value, base_url):
+    candidate = html_lib.unescape(str(value or "").strip())
+    candidate = unescape_js_text(candidate).strip().strip('"\'')
+    candidate = candidate.rstrip(",)]};")
+    if not candidate or candidate == "about:blank":
+        return ""
+    if candidate.startswith("//"):
+        scheme = urlparse(base_url).scheme or "https"
+        candidate = f"{scheme}:{candidate}"
+    elif not re.match(r"^[a-zA-Z][a-zA-Z0-9+\-.]*:", candidate):
+        candidate = urljoin(base_url, candidate)
+    if not candidate.startswith(("http://", "https://")):
+        return ""
+    return candidate
+
+
+def extract_scan_candidates(text, base_url):
+    candidates = []
+    seen = set()
+    if not text:
+        return candidates
+    if len(str(text)) > 3000000:
+        text = str(text)[:3000000]
+
+    patterns = [
+        r"(?:https?:)?//[^\s'\"<>\\]+",
+        r"(?:src|href|file|url|source|sources|playlist|manifest|hls|dash|mpd|m3u8|video_url|videoUrl|manifestUrl|data-file|data-url|data-src|data-href|data-item|data-config|data-fv|data-options|iframe|embed|player|server|html)\s*[:=]\s*[\"']([^\"']+)[\"']",
+        r"[\"'](/[^\"'<>\s\\]*(?:m3u8|mpd|hls|playlist|manifest|newplaylist|embed|player|stream|video|api/get\.php|zip|rar|7z|tar|gz|tgz|bz2|xz|pdf|docx?|xlsx?|pptx?|rtf|txt|csv|exe|msi|apk|ipa|dmg|pkg|deb|rpm|iso|img|bin|torrent|epub|mobi|srt|vtt|ass|ssa|nfo)[^\"'<>\s\\]*)[\"']",
+    ]
+    for scan in text_scan_variants(text):
+        for pattern in patterns:
+            for match in re.finditer(pattern, scan, flags=re.IGNORECASE):
+                raw = match.group(1) if match.groups() else match.group(0)
+                candidate = normalize_candidate_url(raw, base_url)
+                if not candidate or candidate in seen:
+                    continue
+                if is_likely_media_candidate(candidate) or is_likely_player_page(candidate):
+                    seen.add(candidate)
+                    candidates.append(candidate)
+    return candidates
+
+
+def candidate_score(value):
+    lower = str(value or "").lower()
+    if re.search(r"\.m3u8(\?|#|$)|/newplaylist|/m3u8|/hlsr2|/hls/", lower):
+        return 100
+    if re.search(r"\.mp4(\?|#|$)", lower):
+        return 90
+    if generic_media_kind(value) == "player":
+        return 80
+    if is_likely_media_candidate(value):
+        return 70
+    if is_likely_player_page(value):
+        return 40
+    return 0
+
+
+def resolve_known_player_candidate(candidate, referer):
+    resolvers = (
+        resolve_genz3x_download_url,
+        resolve_kubhd_download_url,
+        resolve_anime108_download_url,
+        resolve_cloudbeta_download_url,
+        resolve_meeplayer_download_url,
+    )
+    for resolver in resolvers:
+        resolved_url, resolved_args, profile = resolver(candidate)
+        if profile and resolved_url and resolved_url != candidate:
+            return resolved_url, resolved_args, profile
+    return None, [], None
+
+
 def extract_genz3x_embed_url(page_html, page_url):
     patterns = [
         r'<meta[^>]+itemprop=["\']embedURL["\'][^>]+content=["\']([^"\']+)["\']',
@@ -1101,6 +1345,241 @@ def resolve_meeplayer_download_url(download_url):
         return download_url, [], "meeplayer"
 
 
+def extract_dooplay_options(page_html):
+    options = []
+    seen = set()
+    for tag in re.findall(r"<[^>]*(?:dooplay_player_option|player-option-)[^>]*>", page_html or "", flags=re.IGNORECASE):
+        post = extract_first_html_attr(tag, "data-post")
+        nume = extract_first_html_attr(tag, "data-nume")
+        option_type = extract_first_html_attr(tag, "data-type") or "movie"
+        if not post or not nume or str(nume).lower() == "trailer":
+            continue
+        key = (post, nume, option_type)
+        if key not in seen:
+            seen.add(key)
+            options.append(key)
+
+    for match in re.finditer(
+        r'\{[^{}]*["\']post["\']\s*:\s*["\']?(\d+)["\']?[^{}]*["\']nume["\']\s*:\s*["\']?([^"\',}]+)["\']?[^{}]*["\']type["\']\s*:\s*["\']?([^"\',}]+)["\']?[^{}]*\}',
+        page_html or "",
+        flags=re.IGNORECASE,
+    ):
+        post, nume, option_type = match.group(1), match.group(2), match.group(3) or "movie"
+        if str(nume).lower() == "trailer":
+            continue
+        key = (post, nume, option_type)
+        if key not in seen:
+            seen.add(key)
+            options.append(key)
+    return options
+
+
+def fetch_dooplay_results(page_html, page_url):
+    collected = []
+    parsed = urlparse(page_url)
+    if not parsed.scheme or not parsed.netloc:
+        return collected
+    ajax_url = f"{parsed.scheme}://{parsed.netloc}/wp-admin/admin-ajax.php"
+    for post, nume, option_type in extract_dooplay_options(page_html):
+        try:
+            print(f"[palladium] generic scan dooplay: post={post} nume={nume} type={option_type}")
+            response = post_site_text(
+                ajax_url,
+                {"action": "doo_player_ajax", "post": post, "nume": nume, "type": option_type},
+                referer=page_url,
+            )
+            try:
+                payload = json.loads(response)
+                if isinstance(payload, dict) and payload.get("embed_url"):
+                    collected.append(str(payload.get("embed_url")))
+                collected.append(json.dumps(payload))
+            except Exception:
+                collected.append(response)
+        except Exception as error:
+            print(f"[palladium] generic scan dooplay failed: {error}")
+    return collected
+
+
+def extract_halim_options(page_html):
+    options = []
+    seen = set()
+    page_config = extract_anime108_config(page_html)
+
+    def add(post, episode="1", server="1", lang="Sound Track"):
+        post = str(post or "").strip()
+        episode = str(episode or "1").strip()
+        server = str(server or "1").strip()
+        lang = str(lang or "Sound Track").strip()
+        if not post or not server:
+            return
+        key = (post, episode, server, lang)
+        if key not in seen:
+            seen.add(key)
+            options.append(key)
+
+    if page_config.get("post_id"):
+        add(
+            page_config.get("post_id"),
+            page_config.get("episode") or "1",
+            page_config.get("server") or "1",
+            page_config.get("lang") or extract_anime108_lang(page_html),
+        )
+
+    for tag in re.findall(r"<[^>]*(?:halim-btn|data-post-id|data-server)[^>]*>", page_html or "", flags=re.IGNORECASE):
+        post = extract_first_html_attr(tag, "data-post-id") or extract_first_html_attr(tag, "data-post") or extract_first_html_attr(tag, "data-id")
+        server = extract_first_html_attr(tag, "data-server") or "1"
+        episode = extract_first_html_attr(tag, "data-episode") or extract_first_html_attr(tag, "data-ep") or "1"
+        add(post, episode, server, extract_anime108_lang(page_html))
+
+    for match in re.finditer(
+        r'\{[^{}]*["\']post["\']\s*:\s*["\']?(\d+)["\']?[^{}]*["\']server["\']\s*:\s*["\']?([^"\',}]+)["\']?[^{}]*["\']episode["\']\s*:\s*["\']?([^"\',}]+)["\']?[^{}]*\}',
+        page_html or "",
+        flags=re.IGNORECASE,
+    ):
+        add(match.group(1), match.group(3), match.group(2), extract_anime108_lang(page_html))
+
+    return options
+
+
+def fetch_halim_results(page_html, page_url, title=""):
+    collected = []
+    parsed = urlparse(page_url)
+    if not parsed.scheme or not parsed.netloc:
+        return collected
+    api_url = f"{parsed.scheme}://{parsed.netloc}/api/get.php"
+    for post, episode, server, lang in extract_halim_options(page_html):
+        try:
+            print(f"[palladium] generic scan halim: post={post} episode={episode} server={server}")
+            collected.append(
+                post_site_text(
+                    api_url,
+                    {
+                        "action": "halim_ajax_player",
+                        "nonce": "",
+                        "episode": episode,
+                        "server": server,
+                        "postid": post,
+                        "lang": lang,
+                        "title": title,
+                    },
+                    referer=page_url,
+                )
+            )
+        except Exception as error:
+            print(f"[palladium] generic scan halim failed: {error}")
+    return collected
+
+
+def extract_page_title(page_html, fallback_url):
+    patterns = [
+        r'<meta[^>]+property=["\']og:title["\'][^>]+content=["\']([^"\']+)["\']',
+        r"<title[^>]*>(.*?)</title>",
+    ]
+    for pattern in patterns:
+        match = re.search(pattern, page_html or "", flags=re.IGNORECASE | re.DOTALL)
+        if match:
+            title = html_lib.unescape(re.sub(r"\s+", " ", match.group(1)).strip())
+            if title:
+                return title
+    host = normalized_url_host(fallback_url)
+    return host or "Video"
+
+
+def fetch_script_texts(page_html, page_url, limit=6):
+    scripts = []
+    for match in re.finditer(r'<script[^>]+src\s*=\s*["\']([^"\']+)["\']', page_html or "", flags=re.IGNORECASE):
+        if len(scripts) >= limit:
+            break
+        script_url = normalize_candidate_url(match.group(1), page_url)
+        if not script_url or is_crawler_blocked_url(script_url):
+            continue
+        if re.search(r"google-analytics|googletagmanager|doubleclick|facebook|twitter|telegram|/ads?|banner|popunder|histats|yandex\.ru/metrika", script_url, flags=re.IGNORECASE):
+            continue
+        try:
+            script_text = fetch_site_text(script_url, referer=page_url)
+            scripts.append(script_text[:700000])
+        except Exception:
+            continue
+    return scripts
+
+
+def select_best_generic_candidate(candidates):
+    valid = [candidate for candidate in candidates if candidate and not is_crawler_blocked_url(candidate)]
+    valid.sort(key=candidate_score, reverse=True)
+    return valid[0] if valid else None
+
+
+def resolve_generic_scan_candidate(candidate, referer, depth, seen):
+    if not candidate or candidate in seen:
+        return None, [], None
+    seen.add(candidate)
+
+    resolved_url, resolved_args, profile = resolve_known_player_candidate(candidate, referer)
+    if profile and resolved_url and resolved_url != candidate:
+        return resolved_url, resolved_args, f"generic-{profile}"
+
+    if is_likely_media_candidate(candidate):
+        return candidate, ["--referer", referer, "--user-agent", DEFAULT_BROWSER_USER_AGENT], "generic-media"
+
+    if depth >= 2 or not is_likely_player_page(candidate):
+        return None, [], None
+
+    try:
+        page_html = fetch_site_text_impersonated(candidate, referer=referer)
+    except Exception as error:
+        print(f"[palladium] generic deep scan fetch failed: {error}")
+        return None, [], None
+
+    nested = extract_scan_candidates(page_html, candidate)
+    for script_text in fetch_script_texts(page_html, candidate, limit=4):
+        nested.extend(extract_scan_candidates(script_text, candidate))
+
+    for nested_candidate in sorted(set(nested), key=candidate_score, reverse=True):
+        resolved_url, resolved_args, profile = resolve_generic_scan_candidate(nested_candidate, candidate, depth + 1, seen)
+        if profile:
+            return resolved_url, resolved_args, profile
+    return None, [], None
+
+
+def resolve_generic_page_download_url(download_url):
+    if not str(download_url or "").startswith(("http://", "https://")) or is_youtube_url(download_url):
+        return download_url, [], None
+
+    try:
+        print("[palladium] generic page scan: started")
+        resolved_url, resolved_args, profile = resolve_known_player_candidate(download_url, download_url)
+        if profile and resolved_url and resolved_url != download_url:
+            return resolved_url, resolved_args, f"generic-{profile}"
+        if is_likely_media_candidate(download_url):
+            return download_url, [], "generic-direct"
+
+        page_html = fetch_site_text_impersonated(download_url)
+        page_title = extract_page_title(page_html, download_url)
+        candidates = extract_scan_candidates(page_html, download_url)
+        for body in fetch_dooplay_results(page_html, download_url):
+            candidates.extend(extract_scan_candidates(body, download_url))
+        for body in fetch_halim_results(page_html, download_url, title=page_title):
+            candidates.extend(extract_scan_candidates(body, download_url))
+        for script_text in fetch_script_texts(page_html, download_url):
+            candidates.extend(extract_scan_candidates(script_text, download_url))
+
+        print(f"[palladium] generic page scan candidates: {len(set(candidates))}")
+        seen = set()
+        for candidate in sorted(set(candidates), key=candidate_score, reverse=True):
+            resolved_url, resolved_args, profile = resolve_generic_scan_candidate(candidate, download_url, 0, seen)
+            if profile:
+                print(f"[palladium] generic page scan resolved: {profile} -> {resolved_url}")
+                return resolved_url, resolved_args, "generic-scan"
+
+        best = select_best_generic_candidate(candidates)
+        if best:
+            print(f"[palladium] generic page scan fallback candidate: {best}")
+            return best, ["--referer", download_url, "--user-agent", DEFAULT_BROWSER_USER_AGENT], "generic-scan"
+    except Exception as error:
+        print(f"[palladium] generic page scan failed: {error}")
+    return download_url, [], None
+
+
 def build_site_specific_download_args(download_url, existing_args):
     if is_youtube_url(download_url):
         args = []
@@ -1542,6 +2021,8 @@ def run_yt_dlp_flow(
                             effective_download_url, resolved_site_args, resolved_site_profile_name = resolve_cloudbeta_download_url(download_url)
                         if not resolved_site_profile_name:
                             effective_download_url, resolved_site_args, resolved_site_profile_name = resolve_meeplayer_download_url(download_url)
+                        if not resolved_site_profile_name:
+                            effective_download_url, resolved_site_args, resolved_site_profile_name = resolve_generic_page_download_url(download_url)
                         if resolved_site_profile_name:
                             print(f"[palladium] site profile resolved: {resolved_site_profile_name}")
                         existing_args.extend(resolved_site_args)
